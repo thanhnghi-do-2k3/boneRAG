@@ -23,6 +23,10 @@ from .vector_index import InMemoryVectorIndex, SearchHit
 @dataclass(frozen=True)
 class Evidence:
     image_id: str
+    image_path: str | None
+    image_width: int | None
+    image_height: int | None
+    fracture_boxes: list[list[float]] | None
     title: str
     body_part: str
     diagnosis: str
@@ -76,6 +80,11 @@ class BoneRAGPipeline:
             index.add(record.image_id, self.encoder.encode(record.text))
         return index
 
+    def records_as_dicts(self) -> list[dict[str, object]]:
+        """Expose the demo corpus in a JSON-friendly form for the server/UI."""
+
+        return [asdict(record) for record in self.records]
+
     def retrieve(self, question: str) -> list[SearchHit]:
         """Online retrieval: encode the question and return top-k candidate ids."""
 
@@ -126,6 +135,10 @@ class BoneRAGPipeline:
             evidence.append(
                 Evidence(
                     image_id=record.image_id,
+                    image_path=record.image_path,
+                    image_width=record.image_width,
+                    image_height=record.image_height,
+                    fracture_boxes=record.fracture_boxes,
                     title=record.title,
                     body_part=record.body_part,
                     diagnosis=record.diagnosis,
@@ -259,5 +272,3 @@ class BoneRAGPipeline:
         if chunk:
             yield chunk
 
-    def records_as_dicts(self) -> list[dict[str, str]]:
-        return [asdict(record) for record in self.records]

@@ -8,6 +8,9 @@ machine without downloading datasets.
 from __future__ import annotations
 
 from dataclasses import dataclass
+import json
+import os
+from pathlib import Path
 
 
 @dataclass(frozen=True)
@@ -26,9 +29,154 @@ class ImageRecord:
     region: str
     evidence_note: str
     text: str
+    image_path: str | None = None
+    image_width: int | None = None
+    image_height: int | None = None
+    fracture_boxes: list[list[float]] | None = None
 
 
-SAMPLE_RECORDS: list[ImageRecord] = [
+def _discover_dataset_images_root() -> Path | None:
+    """Try to find the local FracAtlas-style image folder.
+
+    Priority:
+    1. BONERAG_DATASET_IMAGES_ROOT env var
+    2. Common sibling folder next to this repository (../TH-P2/...)
+    """
+
+    env_path = os.environ.get("BONERAG_DATASET_IMAGES_ROOT", "").strip()
+    if env_path:
+        candidate = Path(env_path).expanduser().resolve()
+        if candidate.exists() and candidate.is_dir():
+            return candidate
+
+    repo_root = Path(__file__).resolve().parents[2]
+    default_candidate = (repo_root.parent / "TH-P2" / "segmentation" / "dataset" / "images").resolve()
+    if default_candidate.exists() and default_candidate.is_dir():
+        return default_candidate
+
+    return None
+
+
+def _load_fracture_annotations(images_root: Path) -> dict[str, dict[str, object]]:
+    """Return per-file fracture metadata from COCO annotations if available."""
+
+    annotation_path = (
+        images_root.parent
+        / "Annotations"
+        / "COCO JSON"
+        / "COCO_fracture_masks.json"
+    )
+    if not annotation_path.exists():
+        return {}
+
+    try:
+        payload = json.loads(annotation_path.read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError):
+        return {}
+
+    image_meta_by_id: dict[int, dict[str, object]] = {}
+    for image in payload.get("images", []):
+        image_id = image.get("id")
+        file_name = image.get("file_name")
+        if not isinstance(image_id, int) or not isinstance(file_name, str):
+            continue
+        image_meta_by_id[image_id] = {
+            "file_name": file_name,
+            "width": int(image.get("width", 0)) if image.get("width") else None,
+            "height": int(image.get("height", 0)) if image.get("height") else None,
+            "fracture_boxes": [],
+        }
+
+    for ann in payload.get("annotations", []):
+        image_id = ann.get("image_id")
+        bbox = ann.get("bbox")
+        if not isinstance(image_id, int) or not isinstance(bbox, list) or len(bbox) != 4:
+            continue
+        target = image_meta_by_id.get(image_id)
+        if not target:
+            continue
+        target["fracture_boxes"].append([float(value) for value in bbox])
+
+    by_file: dict[str, dict[str, object]] = {}
+    for entry in image_meta_by_id.values():
+        file_name = entry.get("file_name")
+        if isinstance(file_name, str):
+            by_file[file_name] = entry
+    return by_file
+
+
+def _build_dataset_sample_records() -> list[ImageRecord]:
+    """Build many UI-friendly records from local FracAtlas folders."""
+
+    images_root = _discover_dataset_images_root()
+    if images_root is None:
+        return []
+
+    fractured_files = sorted((images_root / "Fractured").glob("*.jpg"))
+    non_fractured_files = sorted((images_root / "Non_fractured").glob("*.jpg"))
+    if not fractured_files and not non_fractured_files:
+        return []
+
+    limit = int(os.environ.get("BONERAG_RECORD_LIMIT", "120"))
+    limit = max(12, min(limit, 500))
+    fractured_limit = min(len(fractured_files), max(1, int(limit * 0.65)))
+    normal_limit = min(len(non_fractured_files), max(1, limit - fractured_limit))
+    selected_fractured = fractured_files[:fractured_limit]
+    selected_normal = non_fractured_files[:normal_limit]
+
+    annotation_lookup = _load_fracture_annotations(images_root)
+
+    records: list[ImageRecord] = []
+    max_len = max(len(selected_fractured), len(selected_normal))
+    for index in range(max_len):
+        if index < len(selected_fractured):
+            image_path = selected_fractured[index]
+            ann = annotation_lookup.get(image_path.name, {})
+            fracture_boxes = ann.get("fracture_boxes") if isinstance(ann, dict) else None
+            records.append(
+                ImageRecord(
+                    image_id=f"fracatlas-fractured-{image_path.stem.lower()}",
+                    title=f"FracAtlas fractured X-ray {image_path.stem}",
+                    body_part="forearm/wrist",
+                    diagnosis="fracture",
+                    fracture_type="fractured",
+                    region="forearm and wrist",
+                    evidence_note=(
+                        f"Real FracAtlas fractured case."
+                        + (f" Annotated fracture regions: {len(fracture_boxes)}." if fracture_boxes else "")
+                    ),
+                    text=(
+                        f"fracatlas fractured xray wrist forearm bone fracture case {image_path.stem.lower()}"
+                    ),
+                    image_path=str(image_path),
+                    image_width=ann.get("width") if isinstance(ann, dict) else None,
+                    image_height=ann.get("height") if isinstance(ann, dict) else None,
+                    fracture_boxes=fracture_boxes if isinstance(fracture_boxes, list) and fracture_boxes else None,
+                )
+            )
+
+        if index < len(selected_normal):
+            image_path = selected_normal[index]
+            records.append(
+                ImageRecord(
+                    image_id=f"fracatlas-normal-{image_path.stem.lower()}",
+                    title=f"FracAtlas non-fractured X-ray {image_path.stem}",
+                    body_part="forearm/wrist",
+                    diagnosis="normal",
+                    fracture_type="none",
+                    region="forearm and wrist",
+                    evidence_note="Real FracAtlas non-fractured reference case.",
+                    text=f"fracatlas normal xray wrist forearm bone no fracture case {image_path.stem.lower()}",
+                    image_path=str(image_path),
+                )
+            )
+
+        if len(records) >= limit:
+            break
+    return records[:limit]
+
+
+FALLBACK_RECORDS: list[ImageRecord] = [
     ImageRecord(
         image_id="frac-wrist-001",
         title="Distal radius fracture",
@@ -96,3 +244,6 @@ SAMPLE_RECORDS: list[ImageRecord] = [
         text="normal hip pelvis proximal femur xray no fracture preserved alignment cortex",
     ),
 ]
+
+
+SAMPLE_RECORDS: list[ImageRecord] = _build_dataset_sample_records() or FALLBACK_RECORDS

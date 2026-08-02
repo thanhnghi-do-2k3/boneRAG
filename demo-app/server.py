@@ -17,7 +17,7 @@ import mimetypes
 import time
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
-from urllib.parse import parse_qs, urlparse
+from urllib.parse import parse_qs, quote, unquote, urlparse
 
 if __package__ in {None, ""}:
     import sys
@@ -72,6 +72,47 @@ class BoneRAGHandler(BaseHTTPRequestHandler):
             self.wfile.flush()
             time.sleep(0.18)
 
+    def _record_to_public_payload(self, record: dict[str, object]) -> dict[str, object]:
+        payload = dict(record)
+        image_id = str(payload.get("image_id", "")).strip()
+        image_path = str(payload.get("image_path", "")).strip()
+        if image_id and image_path:
+            payload["image_url"] = f"/api/image/{quote(image_id, safe='')}"
+        else:
+            payload["image_url"] = None
+        return payload
+
+    def _result_to_public_payload(self, result: dict[str, object]) -> dict[str, object]:
+        payload = dict(result)
+        evidence = payload.get("evidence", [])
+        if isinstance(evidence, list):
+            payload["evidence"] = [
+                self._record_to_public_payload(item)
+                if isinstance(item, dict)
+                else item
+                for item in evidence
+            ]
+        return payload
+
+    def _send_record_image(self, image_id: str) -> None:
+        record = PIPELINE.record_by_id.get(image_id)
+        if not record or not record.image_path:
+            self._send_json({"error": "image not found"}, status=404)
+            return
+
+        image_path = Path(record.image_path).expanduser().resolve()
+        if not image_path.exists() or not image_path.is_file():
+            self._send_json({"error": "image file missing"}, status=404)
+            return
+        self._send_file(image_path)
+
+    def _public_stream_events(self, events):
+        for event in events:
+            if isinstance(event, dict) and event.get("type") == "done" and isinstance(event.get("result"), dict):
+                yield {**event, "result": self._result_to_public_payload(event["result"])}
+                continue
+            yield event
+
     def _serve_frontend_asset(self, route: str) -> bool:
         if not FRONTEND_DIST.exists():
             return False
@@ -91,14 +132,21 @@ class BoneRAGHandler(BaseHTTPRequestHandler):
         parsed = urlparse(self.path)
         route = parsed.path
         if route == "/api/records":
-            self._send_json(PIPELINE.records_as_dicts())
+            self._send_json([self._record_to_public_payload(record) for record in PIPELINE.records_as_dicts()])
+            return
+        if route.startswith("/api/image/"):
+            image_id = unquote(route.removeprefix("/api/image/")).strip()
+            if not image_id:
+                self._send_json({"error": "image id is required"}, status=400)
+                return
+            self._send_record_image(image_id)
             return
         if route == "/api/answer-stream":
             question = parse_qs(parsed.query).get("question", [""])[0].strip()
             if not question:
                 self._send_sse([{"type": "error", "message": "question is required"}])
                 return
-            self._send_sse(PIPELINE.answer_events(question))
+            self._send_sse(self._public_stream_events(PIPELINE.answer_events(question)))
             return
         if self._serve_frontend_asset(route):
             return
@@ -130,7 +178,7 @@ class BoneRAGHandler(BaseHTTPRequestHandler):
             return
 
         result = PIPELINE.answer(question)
-        self._send_json(result.to_dict())
+        self._send_json(self._result_to_public_payload(result.to_dict()))
 
 
 def main() -> None:
