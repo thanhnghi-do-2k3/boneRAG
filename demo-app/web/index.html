@@ -1,0 +1,72 @@
+<!doctype html>
+<html lang="vi">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>BoneRAG Demo</title>
+    <link rel="stylesheet" href="/static/styles.css" />
+  </head>
+  <body>
+    <aside class="rail">
+      <p class="kicker">Baseline</p>
+      <h1>BoneRAG baseline</h1>
+      <p>Demo q -> retrieve -> rerank -> answer, chưa cần GPU hay model thật.</p>
+      <nav>
+        <a href="#demo">Demo</a>
+        <a href="#pipeline">Pipeline</a>
+        <a href="#records">Kho mẫu</a>
+      </nav>
+    </aside>
+
+    <main>
+      <section class="hero">
+        <p class="kicker">Image RAG cho VQA bệnh lý xương</p>
+        <h2>Baseline: bản tối thiểu để chạy và hiểu luồng code</h2>
+        <p>
+          Hệ thống nhận câu hỏi, tìm các ca X-quang tương tự trong kho mẫu, rerank nhẹ bằng metadata,
+          rồi trả lời kèm evidence. Đây là khung để sau này thay bằng BiomedCLIP, FAISS và MLLM thật.
+        </p>
+      </section>
+
+      <section id="demo" class="panel">
+        <div class="panel-title">
+          <div>
+            <p class="kicker">Demo</p>
+            <h3>Hỏi thử pipeline</h3>
+          </div>
+          <button id="example-button">Điền câu hỏi mẫu</button>
+        </div>
+        <form id="ask-form">
+          <textarea
+            id="question"
+            rows="3"
+            placeholder="Ví dụ: Does this wrist X-ray show a distal radius fracture?"
+          ></textarea>
+          <button type="submit">Chạy Baseline</button>
+        </form>
+        <pre id="answer-box" class="answer-box">Kết quả sẽ hiện ở đây.</pre>
+        <div id="evidence-list" class="evidence-grid"></div>
+      </section>
+
+      <section id="pipeline" class="panel">
+        <p class="kicker">Pipeline</p>
+        <h3>Code chạy theo 5 bước</h3>
+        <div class="flow">
+          <article><span>1</span><strong>Encode</strong><p>HashingTextEncoder biến câu hỏi thành vector.</p></article>
+          <article><span>2</span><strong>Retrieve</strong><p>InMemoryVectorIndex lấy top-k bằng cosine.</p></article>
+          <article><span>3</span><strong>Gate</strong><p>should_retrieve quyết định có cần evidence không.</p></article>
+          <article><span>4</span><strong>Rerank</strong><p>Metadata boost ưu tiên body part, diagnosis, region.</p></article>
+          <article><span>5</span><strong>Generate</strong><p>Template trả lời kèm evidence và cảnh báo.</p></article>
+        </div>
+      </section>
+
+      <section id="records" class="panel">
+        <p class="kicker">Knowledge base</p>
+        <h3>Các case mẫu đang được index</h3>
+        <div id="record-list" class="record-grid"></div>
+      </section>
+    </main>
+
+    <script src="/static/app.js"></script>
+  </body>
+</html>

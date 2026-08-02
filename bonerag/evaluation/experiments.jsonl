@@ -1,0 +1,1 @@
+{"id":"baseline-hashing-001","date":"2026-08-02","change":"Baseline hashing encoder + in-memory cosine index + template answer","dataset":"toy bone X-ray cases","retrieval_recall_at_k":null,"answer_accuracy":null,"faithfulness":null,"latency_ms":null,"decision":"baseline","notes":"Dùng làm mốc trước khi thay encoder/index/generator thật."}
