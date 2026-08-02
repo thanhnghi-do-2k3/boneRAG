@@ -1,12 +1,15 @@
 import { Button } from '../design-system/Button';
+import { XrayPreview } from './XrayPreview';
 
 export function EvidenceCard({ item, onView }) {
   return (
     <article className="evidence-card">
-      <div className="xray-tile">
-        <span>{item.body_part}</span>
-        <strong>{item.diagnosis}</strong>
-      </div>
+      <XrayPreview
+        imageUrl={item.image_url}
+        bodyPart={item.body_part}
+        diagnosis={item.diagnosis}
+        title={item.title}
+      />
       <div>
         <div className="card-topline">
           <span>{item.image_id}</span>

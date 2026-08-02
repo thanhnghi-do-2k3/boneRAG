@@ -502,13 +502,17 @@ textarea::placeholder {
 
 .xray-thumb {
   flex: 0 0 auto;
+  width: 46px;
+  height: 46px;
+  border-radius: 14px;
+  min-height: 46px;
+}
+
+div.xray-thumb {
   display: flex;
   flex-direction: column;
   justify-content: space-between;
-  width: 46px;
-  height: 46px;
   padding: 6px;
-  border-radius: 14px;
   background:
     linear-gradient(135deg, rgba(255, 255, 255, 0.08), transparent),
     radial-gradient(circle at 50% 38%, #d6dce0, #657173 44%, #141b1d 76%);
@@ -525,6 +529,11 @@ textarea::placeholder {
 .xray-thumb strong {
   font-size: 0.62rem;
   line-height: 1;
+}
+
+img.xray-thumb {
+  padding: 0;
+  object-fit: cover;
 }
 
 .bubble-image-context {
@@ -670,6 +679,16 @@ textarea::placeholder {
   text-transform: uppercase;
 }
 
+.xray-image {
+  display: block;
+  width: 100%;
+  min-height: 126px;
+  border: 1px solid var(--line);
+  border-radius: 18px;
+  object-fit: cover;
+  background: #050505;
+}
+
 .xray-tile span {
   font-size: 0.72rem;
   letter-spacing: 0.08em;
@@ -787,6 +806,40 @@ textarea::placeholder {
 
 .modal-xray {
   min-height: 220px;
+}
+
+.modal-xray-frame {
+  position: relative;
+  width: 100%;
+}
+
+.modal-xray-frame .modal-xray {
+  width: 100%;
+  min-height: 220px;
+}
+
+.fracture-overlay {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  pointer-events: none;
+}
+
+.fracture-box {
+  fill: rgba(239, 68, 68, 0.2);
+  stroke: #ef4444;
+  stroke-width: 6;
+}
+
+.fracture-label {
+  fill: #ef4444;
+  font-size: 34px;
+  font-weight: 800;
+  text-transform: uppercase;
+  paint-order: stroke;
+  stroke: rgba(8, 8, 8, 0.72);
+  stroke-width: 6;
 }
 
 .detail-list {
@@ -991,13 +1044,8 @@ textarea::placeholder {
   margin-bottom: 12px;
 }
 
-.pasted-preview {
-  display: block;
-  width: 100%;
-  object-fit: cover;
-  border: 1px solid var(--line);
+img.selected-drawer-preview {
   border-radius: 20px;
-  background: #050505;
 }
 
 .image-library-grid {
@@ -1055,6 +1103,29 @@ textarea::placeholder {
   flex-wrap: wrap;
   gap: 8px;
   margin-top: 14px;
+}
+
+.copy-toast {
+  position: fixed;
+  right: 22px;
+  bottom: 22px;
+  z-index: 60;
+  padding: 11px 14px;
+  border-radius: 12px;
+  border: 1px solid var(--line-strong);
+  background: rgba(24, 24, 24, 0.95);
+  color: var(--ink);
+  font-size: 0.9rem;
+  font-weight: 700;
+  box-shadow: var(--shadow);
+}
+
+.copy-toast.success {
+  border-color: rgba(25, 195, 148, 0.7);
+}
+
+.copy-toast.error {
+  border-color: rgba(239, 68, 68, 0.7);
 }
 
 .evaluation-grid {

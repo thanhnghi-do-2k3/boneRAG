@@ -41,25 +41,27 @@ export function App() {
 
   function runStream(nextQuestion = state.question) {
     const trimmed = nextQuestion.trim();
-    if (!trimmed || !state.selectedImage || state.running) return;
+    if (!trimmed || state.running) return;
 
     eventSourceRef.current?.close();
-    const imageContext = [
-      `image_id: ${state.selectedImage.image_id}`,
-      `body_part: ${state.selectedImage.body_part}`,
-      `title: ${state.selectedImage.title}`,
-      `diagnosis_hint: ${state.selectedImage.diagnosis}`,
-      `region: ${state.selectedImage.region}`,
-      `note: ${state.selectedImage.evidence_note}`,
-    ].join('. ');
-    const pipelineQuestion = `${trimmed}\n\nSelected image context: ${imageContext}`;
+    const imageContext = state.selectedImage
+      ? [
+          `image_id: ${state.selectedImage.image_id}`,
+          `body_part: ${state.selectedImage.body_part}`,
+          `title: ${state.selectedImage.title}`,
+          `diagnosis_hint: ${state.selectedImage.diagnosis}`,
+          `region: ${state.selectedImage.region}`,
+          `note: ${state.selectedImage.evidence_note}`,
+        ].join('. ')
+      : '';
+    const pipelineQuestion = imageContext ? `${trimmed}\n\nSelected image context: ${imageContext}` : trimmed;
     const now = Date.now();
     const baseMessages = state.messages;
     const userMessage = {
       id: `user-${now}`,
       role: 'user',
       text: trimmed,
-      image: state.selectedImage,
+      image: state.selectedImage ?? null,
       evidence: [],
       status: 'done',
     };
@@ -239,7 +241,6 @@ export function App() {
           <ImageLibraryScreen
             records={state.records}
             selectedImage={state.selectedImage}
-            onUseImage={(image) => dispatch({ type: 'select-image', image })}
           />
         )}
         {state.screen === 'logs' && <LogScreen logs={state.logs} rawHits={rawHits} running={state.running} />}

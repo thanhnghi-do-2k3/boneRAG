@@ -1,5 +1,6 @@
 import { Button } from '../design-system/Button';
 import { EvidenceCard } from './EvidenceCard';
+import { XrayPreview } from './XrayPreview';
 
 export function EvidenceDrawer({
   context,
@@ -37,14 +38,13 @@ export function EvidenceDrawer({
         </div>
         {selectedImage ? (
           <article className="selected-drawer-image">
-            {selectedImage.data_url ? (
-              <img className="selected-drawer-preview pasted-preview" src={selectedImage.data_url} alt={selectedImage.title} />
-            ) : (
-              <div className="xray-tile selected-drawer-preview">
-                <span>{selectedImage.body_part}</span>
-                <strong>{selectedImage.diagnosis}</strong>
-              </div>
-            )}
+            <XrayPreview
+              imageUrl={selectedImage.data_url || selectedImage.image_url}
+              bodyPart={selectedImage.body_part}
+              diagnosis={selectedImage.diagnosis}
+              title={selectedImage.title}
+              className="selected-drawer-preview"
+            />
             <div>
               <div className="card-topline">
                 <span>{selectedImage.image_id}</span>

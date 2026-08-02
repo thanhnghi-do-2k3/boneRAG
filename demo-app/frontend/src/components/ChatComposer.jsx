@@ -3,7 +3,7 @@ import { Button } from '../design-system/Button';
 
 export function ChatComposer({ question, setQuestion, running, selectedImage, onPasteImage, runStream }) {
   const textareaRef = useRef(null);
-  const canSend = Boolean(question.trim()) && Boolean(selectedImage) && !running;
+  const canSend = Boolean(question.trim()) && !running;
 
   useEffect(() => {
     const node = textareaRef.current;
@@ -18,10 +18,8 @@ export function ChatComposer({ question, setQuestion, running, selectedImage, on
     runStream();
   }
 
-  function handlePaste(event) {
-    const imageItem = Array.from(event.clipboardData?.items ?? []).find((item) =>
-      item.type.startsWith('image/'),
-    );
+  function tryPasteImage(event) {
+    const imageItem = Array.from(event.clipboardData?.items ?? []).find((item) => item.type.startsWith('image/'));
     if (!imageItem) return;
     const file = imageItem.getAsFile();
     if (!file) return;
@@ -29,8 +27,12 @@ export function ChatComposer({ question, setQuestion, running, selectedImage, on
     onPasteImage(file);
   }
 
+  function handlePaste(event) {
+    tryPasteImage(event);
+  }
+
   return (
-    <form className="composer" onSubmit={submit}>
+    <form className="composer" onSubmit={submit} onPaste={handlePaste}>
       <div className="composer-row">
         <textarea
           ref={textareaRef}
@@ -38,7 +40,7 @@ export function ChatComposer({ question, setQuestion, running, selectedImage, on
           value={question}
           onChange={(event) => setQuestion(event.target.value)}
           onPaste={handlePaste}
-          placeholder={selectedImage ? 'Nhập câu hỏi về ảnh đã chọn...' : 'Dán ảnh hoặc chọn ảnh test, rồi nhập câu hỏi...'}
+          placeholder={selectedImage ? 'Nhập câu hỏi về ảnh đã chọn (Ctrl+V để dán ảnh khác)...' : 'Ctrl+V để dán ảnh hoặc nhập câu hỏi...'}
         />
         <Button type="submit" className="send-button" disabled={!canSend} aria-label="Gửi câu hỏi">
           {running ? (
