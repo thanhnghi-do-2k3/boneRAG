@@ -47,7 +47,7 @@ FRONTEND_DIST = ROOT / "frontend" / "dist"
 _PIPELINE_CACHE: dict[str, BoneRAGPipeline] = {}
 _ACTIVE_CONFIG: dict = {
     "encoder": "biomedclip",
-    "generator": "template",
+    "generator": "medical_llm",
     "gemini_api_key": "",
     "gemini_model": "gemini-1.5-flash",
     "top_k": 4,
@@ -62,7 +62,7 @@ _PIPELINE_LOCK = threading.Lock()
 
 
 def _pipeline_cache_key(config: dict) -> str:
-    return f"{config['encoder']}|{config['generator']}|{config.get('gemini_model', '')}|{config['top_k']}|{config['min_similarity']}"
+    return f"{config['encoder']}|{config['generator']}|{config.get('gemini_model', '')}|{config.get('openai_api_key', '')}|{config['top_k']}|{config['min_similarity']}"
 
 
 def _get_pipeline(config: dict | None = None) -> BoneRAGPipeline:
@@ -72,11 +72,14 @@ def _get_pipeline(config: dict | None = None) -> BoneRAGPipeline:
     with _PIPELINE_LOCK:
         if key not in _PIPELINE_CACHE:
             encoder = get_multimodal_encoder(mode=cfg.get("encoder", "biomedclip"))
-            gen_name = cfg.get("generator", "template")
+            gen_name = cfg.get("generator", "medical_llm")
             gen_kwargs: dict = {}
             if gen_name == "gemini":
                 gen_kwargs["api_key"] = cfg.get("gemini_api_key", "")
                 gen_kwargs["model"] = cfg.get("gemini_model", "gemini-1.5-flash")
+            elif gen_name == "openai":
+                gen_kwargs["api_key"] = cfg.get("openai_api_key", "")
+                gen_kwargs["model"] = cfg.get("openai_model", "gpt-4o-mini")
             generator = get_generator(gen_name, **gen_kwargs)
             _PIPELINE_CACHE[key] = BoneRAGPipeline(
                 encoder=encoder,

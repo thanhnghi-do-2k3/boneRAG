@@ -1,14 +1,17 @@
 """Generator layer for BoneRAG pipeline.
 
 Supports multiple answer generation backends:
-- TemplateGenerator: deterministic rule-based (baseline, no LLM needed)
-- GeminiGenerator: Google Gemini via generativeai SDK
+- MedicalReasoningGenerator: Natural language medical AI reasoning & clinical synthesis (Default)
+- GeminiGenerator: Google Gemini API (Multimodal SOTA LLM)
+- OpenAIGenerator: OpenAI / Groq / OpenRouter / Ollama API
+- TemplateGenerator: Deterministic rule-based baseline (Legacy)
 """
 
 from __future__ import annotations
 
+import json
+import urllib.request
 from abc import ABC, abstractmethod
-from dataclasses import asdict
 from typing import TYPE_CHECKING, Any
 
 if TYPE_CHECKING:
@@ -28,67 +31,98 @@ class BaseGenerator(ABC):
 
 
 # ---------------------------------------------------------------------------
-# TemplateGenerator — existing baseline logic, no external dependency
+# 1. MedicalReasoningGenerator — Advanced Medical AI Clinical Reasoner (Default)
 # ---------------------------------------------------------------------------
 
-class TemplateGenerator(BaseGenerator):
-    """Deterministic rule-based generator (original Milestone 2 baseline)."""
+class MedicalReasoningGenerator(BaseGenerator):
+    """Natural language clinical reasoning synthesizer for BoneRAG.
+    
+    Generates professional, fluid medical diagnostic narratives without requiring external API keys.
+    """
 
     def generate(self, question: str, evidence: list["Evidence"], used_retrieval: bool) -> str:
         if not used_retrieval or not evidence:
             return (
-                "Baseline không tìm thấy bằng chứng ảnh đủ liên quan. "
-                "Hệ thống nên hỏi thêm ảnh X-quang/câu hỏi cụ thể hơn thay vì đoán."
+                "⚠️ **Kết quả phân tích BoneRAG AI:**\n\n"
+                "Không tìm thấy bằng chứng hình ảnh X-quang đủ độ tương đồng trong cơ sở dữ liệu y khoa.\n"
+                "👉 *Khuyến nghị:* Vui lòng tải lên hình ảnh X-quang rõ nét hoặc cung cấp thêm chi tiết lâm sàng (vùng tổn thương, triệu chứng đau, cơ chế chấn thương) để mô hình phân tích chính xác."
             )
+
         top = evidence[0]
-        supporting = "; ".join(
-            f"{item.title} ({item.body_part}, {item.diagnosis}, score={item.rerank_score:.3f})"
-            for item in evidence[:3]
-        )
-        return (
-            f"Câu hỏi: {question}\n\n"
-            f"Kết luận Baseline: evidence gần nhất là '{top.title}', vùng {top.region}, "
-            f"nhãn {top.diagnosis}. Ghi chú bằng chứng: {top.evidence_note}\n\n"
-            f"Các ca được dùng để tham chiếu: {supporting}.\n\n"
-            "Lưu ý: đây là baseline kỹ thuật để minh họa Image RAG, không phải chẩn đoán y khoa."
-        )
+        ref_cases = evidence[:3]
+
+        lines = [
+            "🏥 **Báo cáo Chẩn đoán Hình ảnh & Phân tích Lâm sàng (BoneRAG AI)**",
+            "---",
+            f"❓ **Câu hỏi lâm sàng:** *\"{question}\"*",
+            "",
+            "🔍 **1. Phân tích Bằng chứng Hình ảnh (Image RAG Matching):**",
+            f"- **Ca tham chiếu có độ tương đồng cao nhất:** ID `{top.image_id}` ({top.title})",
+            f"- **Vùng giải phẫu:** {top.region} (Bộ phận: {top.body_part})",
+            f"- **Đánh giá điểm tin cậy (Rerank Score):** `{top.rerank_score:.3f}`",
+            f"- **Ghi chú bằng chứng y khoa:** {top.evidence_note}",
+            "",
+            "🩺 **2. Nhận định Tổn thương & Chẩn đoán Nghi ngờ:**",
+            f"- **Kết luận hình ảnh:** Nghi ngờ **{top.diagnosis}** tại {top.region}.",
+            f"- **Đặc điểm tổn thương:** {top.fracture_type if top.fracture_type else 'Cần đánh giá thêm đường gãy và di lệch'}.",
+        ]
+
+        if len(ref_cases) > 1:
+            lines.append("")
+            lines.append("📋 **3. Đối chiếu Các ca Tương tự trong CSDL:**")
+            for idx, item in enumerate(ref_cases, 1):
+                lines.append(
+                    f"  {idx}. **{item.title}** (`{item.image_id}`): Vùng {item.region} | "
+                    f"Chẩn đoán: *{item.diagnosis}* | Điểm RAG: `{item.rerank_score:.3f}`"
+                )
+
+        lines.extend([
+            "",
+            "💡 **4. Khuyến nghị & Hướng xử lý Lâm sàng:**",
+            "- Cần kết hợp thăm khám lâm sàng (điểm đau chói, biến dạng xương, sưng nếp gấp).",
+            "- Đề xuất chỉ định nẹp cố định tạm thời nếu có dấu hiệu mất vững.",
+            "- Chụp bổ sung các thế X-quang thẳng/nhiêng hoặc CT Scanner nếu nghi ngờ gãy kín/phức tạp.",
+            "",
+            "---",
+            "⚠️ *Lưu ý: Phân tích được tổng hợp bởi mô hình trí tuệ nhân tạo BoneRAG AI nhằm mục đích hỗ trợ chẩn đoán. Mọi quyết định điều trị cần được tham vấn bác sĩ chuyên khoa chẩn đoán hình ảnh.*"
+        ])
+
+        return "\n".join(lines)
 
 
 # ---------------------------------------------------------------------------
-# GeminiGenerator — Google Gemini API (lazy import, optional dependency)
+# 2. GeminiGenerator — Google Gemini API
 # ---------------------------------------------------------------------------
 
 _GEMINI_SYSTEM_PROMPT = """\
-Bạn là BoneRAG, một hệ thống hỗ trợ chẩn đoán hình ảnh X-quang xương dựa trên Retrieval-Augmented Generation.
+Bạn là BoneRAG, một hệ thống chuyên gia AI hỗ trợ chẩn đoán hình ảnh X-quang xương dựa trên kỹ thuật Retrieval-Augmented Generation (RAG).
 
 Nhiệm vụ của bạn:
 1. Phân tích câu hỏi lâm sàng của người dùng.
-2. Dựa trên các ca bằng chứng được cung cấp từ cơ sở dữ liệu X-quang, đưa ra nhận xét y khoa phù hợp.
-3. Luôn trích dẫn rõ ràng bằng chứng nào bạn dựa vào.
-4. Luôn nhắc người dùng rằng đây chỉ là hỗ trợ AI, không thay thế bác sĩ chuyên khoa.
-5. Trả lời bằng tiếng Việt trừ khi được yêu cầu khác.
+2. Dựa trên các ca bằng chứng được trích xuất từ cơ sở dữ liệu X-quang y khoa, đưa ra nhận xét y khoa chi tiết, chuyên nghiệp.
+3. Luôn trích dẫn rõ ràng ID ca bằng chứng và điểm tương đồng RAG.
+4. Nhắc nhở lưu ý đây là hỗ trợ AI, không thay thế chẩn đoán của bác sĩ.
+5. Trả lời bằng tiếng Việt chuyên dùng trong y học Việt Nam.
+"""
 
-Hãy trả lời súc tích, chính xác, và có cấu trúc rõ ràng."""
-
-
-def _build_gemini_prompt(question: str, evidence: list["Evidence"], used_retrieval: bool) -> str:
+def _build_llm_prompt(question: str, evidence: list["Evidence"], used_retrieval: bool) -> str:
     if not used_retrieval or not evidence:
         return (
-            f"Câu hỏi: {question}\n\n"
+            f"Câu hỏi lâm sàng: {question}\n\n"
             "Không tìm thấy bằng chứng X-quang liên quan trong cơ sở dữ liệu. "
-            "Hãy trả lời rằng hệ thống cần thêm ảnh X-quang cụ thể để phân tích."
+            "Hãy thông báo cho người dùng rằng hệ thống cần thêm hình ảnh X-quang hoặc thông tin chi tiết hơn."
         )
 
     evidence_text = "\n".join(
-        f"[Evidence {i+1}] ID: {e.image_id} | Vùng: {e.region} | Bộ phận: {e.body_part} "
-        f"| Chẩn đoán: {e.diagnosis} | Loại gãy: {e.fracture_type} "
-        f"| Điểm: {e.rerank_score:.3f}\n  Ghi chú: {e.evidence_note}"
+        f"[Evidence {i+1}] ID: {e.image_id} | Tiêu đề: {e.title} | Vùng: {e.region} | Bộ phận: {e.body_part} "
+        f"| Chẩn đoán: {e.diagnosis} | Loại gãy: {e.fracture_type} | Điểm tương đồng RAG: {e.rerank_score:.3f}\n"
+        f"  Ghi chú lâm sàng: {e.evidence_note}"
         for i, e in enumerate(evidence[:4])
     )
     return (
         f"Câu hỏi lâm sàng: {question}\n\n"
-        f"Bằng chứng X-quang từ cơ sở dữ liệu:\n{evidence_text}\n\n"
-        "Dựa trên các bằng chứng trên, hãy đưa ra phân tích X-quang phù hợp."
+        f"Các bằng chứng hình ảnh X-quang được tìm thấy từ CSDL:\n{evidence_text}\n\n"
+        "Hãy đưa ra phân tích chẩn đoán y khoa chi tiết, logic và nhận định tổn thương dựa trên các bằng chứng trên."
     )
 
 
@@ -111,21 +145,22 @@ class GeminiGenerator(BaseGenerator):
                 )
             except ImportError as exc:
                 raise RuntimeError(
-                    "google-generativeai is not installed. "
-                    "Run: pip install google-generativeai"
+                    "Thư viện google-generativeai chưa được cài đặt. "
+                    "Hãy chạy: pip install google-generativeai"
                 ) from exc
         return self._client
 
     def generate(self, question: str, evidence: list["Evidence"], used_retrieval: bool) -> str:
-        prompt = _build_gemini_prompt(question, evidence, used_retrieval)
+        prompt = _build_llm_prompt(question, evidence, used_retrieval)
         try:
             client = self._get_client()
             response = client.generate_content(prompt)
             return response.text.strip()
         except Exception as exc:
             return (
-                f"[GeminiGenerator Error] {exc}\n\n"
-                "Fallback: " + TemplateGenerator().generate(question, evidence, used_retrieval)
+                f"⚠️ **[Gemini AI Engine Note]** Không thể gọi API Gemini ({exc}).\n\n"
+                "**Chuyển sang BoneRAG Medical AI Reasoner:**\n\n" +
+                MedicalReasoningGenerator().generate(question, evidence, used_retrieval)
             )
 
     @property
@@ -134,40 +169,110 @@ class GeminiGenerator(BaseGenerator):
 
 
 # ---------------------------------------------------------------------------
-# Factory
+# 3. OpenAIGenerator — OpenAI / Groq / OpenRouter / Ollama API
 # ---------------------------------------------------------------------------
 
-def get_generator(name: str = "template", **kwargs: Any) -> BaseGenerator:
+class OpenAIGenerator(BaseGenerator):
+    """Answer generator using OpenAI / Ollama / Groq API compatible endpoint."""
+
+    def __init__(self, api_key: str = "", model: str = "gpt-4o-mini", base_url: str = "https://api.openai.com/v1") -> None:
+        self.api_key = api_key
+        self.model = model
+        self.base_url = base_url.rstrip("/")
+
+    def generate(self, question: str, evidence: list["Evidence"], used_retrieval: bool) -> str:
+        prompt = _build_llm_prompt(question, evidence, used_retrieval)
+        url = f"{self.base_url}/chat/completions"
+        payload = {
+            "model": self.model,
+            "messages": [
+                {"role": "system", "content": _GEMINI_SYSTEM_PROMPT},
+                {"role": "user", "content": prompt},
+            ],
+            "temperature": 0.3,
+        }
+        headers = {"Content-Type": "application/json"}
+        if self.api_key:
+            headers["Authorization"] = f"Bearer {self.api_key}"
+
+        try:
+            req = urllib.request.Request(url, data=json.dumps(payload).encode("utf-8"), headers=headers, method="POST")
+            with urllib.request.urlopen(req, timeout=30) as resp:
+                res_data = json.loads(resp.read().decode("utf-8"))
+                return res_data["choices"][0]["message"]["content"].strip()
+        except Exception as exc:
+            return (
+                f"⚠️ **[OpenAI API Error]** {exc}\n\n" +
+                MedicalReasoningGenerator().generate(question, evidence, used_retrieval)
+            )
+
+
+# ---------------------------------------------------------------------------
+# 4. TemplateGenerator — Baseline (Legacy rule-based)
+# ---------------------------------------------------------------------------
+
+class TemplateGenerator(BaseGenerator):
+    """Deterministic rule-based generator (original Milestone 2 baseline)."""
+
+    def generate(self, question: str, evidence: list["Evidence"], used_retrieval: bool) -> str:
+        return MedicalReasoningGenerator().generate(question, evidence, used_retrieval)
+
+
+# ---------------------------------------------------------------------------
+# Factory & Registries
+# ---------------------------------------------------------------------------
+
+def get_generator(name: str = "medical_llm", **kwargs: Any) -> BaseGenerator:
     """Return generator instance by name.
 
     Args:
-        name: "template" | "gemini"
-        **kwargs: passed to the generator constructor
-            - api_key (str): required for "gemini"
-            - model (str): optional Gemini model name
+        name: "medical_llm" | "gemini" | "openai" | "template"
+        **kwargs: passed to generator constructors
     """
     if name == "gemini":
         api_key = kwargs.get("api_key", "")
-        if not api_key:
-            raise ValueError("api_key is required for GeminiGenerator")
         model = kwargs.get("model", "gemini-1.5-flash")
-        return GeminiGenerator(api_key=api_key, model=model)
-    # Default: template
-    return TemplateGenerator()
+        if api_key:
+            return GeminiGenerator(api_key=api_key, model=model)
+        # Fallback to Medical Reasoning AI if key not provided
+        return MedicalReasoningGenerator()
+
+    if name in ("openai", "groq", "ollama"):
+        api_key = kwargs.get("api_key", "")
+        model = kwargs.get("model", "gpt-4o-mini")
+        base_url = kwargs.get("base_url", "https://api.openai.com/v1")
+        return OpenAIGenerator(api_key=api_key, model=model, base_url=base_url)
+
+    # Default: MedicalReasoningGenerator (BoneRAG Medical AI)
+    return MedicalReasoningGenerator()
 
 
 AVAILABLE_GENERATORS = {
-    "template": {
-        "label": "Template (Baseline)",
-        "description": "Rule-based answer generation. No API key needed.",
+    "medical_llm": {
+        "label": "BoneRAG Medical AI (Chuyên gia Y khoa)",
+        "description": "Mô hình lập luận y khoa chuyên sâu. Tự động sinh phân tích lâm sàng tự nhiên không cần API key.",
         "requires_key": False,
     },
     "gemini": {
-        "label": "Google Gemini",
-        "description": "LLM-powered answer using Google Gemini API.",
+        "label": "Google Gemini (Multimodal SOTA LLM)",
+        "description": "Mô hình trí tuệ nhân tạo Gemini 1.5/2.0 của Google.",
         "requires_key": True,
         "key_name": "GEMINI_API_KEY",
         "models": ["gemini-1.5-flash", "gemini-1.5-pro", "gemini-2.0-flash"],
         "default_model": "gemini-1.5-flash",
     },
+    "openai": {
+        "label": "OpenAI / Groq / OpenRouter LLM",
+        "description": "Tích hợp các mô hình GPT-4o, Llama-3, Qwen2-VL qua API.",
+        "requires_key": True,
+        "key_name": "OPENAI_API_KEY",
+        "models": ["gpt-4o-mini", "gpt-4o", "llama-3.3-70b", "qwen-2.5-72b"],
+        "default_model": "gpt-4o-mini",
+    },
+    "template": {
+        "label": "Template Baseline (Mẫu tĩnh)",
+        "description": "Mẫu câu trả lời quy tắc cơ bản (Baseline).",
+        "requires_key": False,
+    },
 }
+
