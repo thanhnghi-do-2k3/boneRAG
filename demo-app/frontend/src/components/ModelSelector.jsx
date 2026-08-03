@@ -44,7 +44,15 @@ export function ModelSelector({ onConfigChange }) {
     }
   };
 
-  if (!configs || !active) return null;
+  if (!configs || !active) {
+    return (
+      <div className="model-selector-wrapper">
+        <button className="model-badge-btn" disabled title="Đang kết nối tải cấu hình Foundation Model từ máy chủ...">
+          <span className="model-badge-enc">⚙️ Foundation Model: Đang tải...</span>
+        </button>
+      </div>
+    );
+  }
 
   const encoderName = configs.encoders?.[active.encoder]?.label || active.encoder;
   const generatorName = configs.generators?.[active.generator]?.label || active.generator;
@@ -52,27 +60,32 @@ export function ModelSelector({ onConfigChange }) {
   return (
     <div className="model-selector-wrapper">
       <button
-        className="model-badge-btn"
+        className="model-badge-btn prominent-badge"
         onClick={() => setOpen((o) => !o)}
-        title="Cấu hình Model"
+        title="Bấm để thiết lập Foundation Model (BiomedCLIP, CLIP, Gemini...)"
       >
-        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+        <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
           <circle cx="12" cy="12" r="3" />
           <path d="M19.07 4.93a10 10 0 0 1 0 14.14M4.93 4.93a10 10 0 0 0 0 14.14" />
         </svg>
+        <span className="model-badge-label">🎛️ Foundation Model:</span>
         <span className="model-badge-enc">{encoderName.split(' ')[0]}</span>
-        <span className="model-badge-sep">+</span>
-        <span className="model-badge-gen">{generatorName.split(' ')[0]}</span>
+        <span className="model-badge-sep">|</span>
+        <span className="model-badge-gen">Gen: {generatorName.split(' ')[0]}</span>
+        <span className="model-badge-caret">▾</span>
       </button>
 
       {open && (
         <div className="model-selector-panel">
           <div className="model-selector-header">
-            <h4>Cấu hình Model Pipeline</h4>
+            <div>
+              <h4>🎛️ Cấu hình Foundation Model</h4>
+              <p className="model-subhint">Chọn mô hình thị giác & sinh từ cho pipeline BoneRAG</p>
+            </div>
             <button className="model-selector-close" onClick={() => setOpen(false)}>✕</button>
           </div>
 
-          <label className="model-field-label">Encoder (Mã hóa)</label>
+          <label className="model-field-label">Vision-Language Encoder (Mã hóa đa phương thức)</label>
           <select
             className="model-select"
             value={active.encoder}

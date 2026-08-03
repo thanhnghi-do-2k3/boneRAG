@@ -1,4 +1,5 @@
 import { useEffect, useRef } from 'react';
+import { ModelSelector } from '../components/ModelSelector';
 import { ChatComposer } from '../components/ChatComposer';
 import { ChatMessage } from '../components/ChatMessage';
 import { EvidenceDrawer } from '../components/EvidenceDrawer';
@@ -31,15 +32,20 @@ export function QuestionScreen({
   return (
     <section className="screen chat-screen with-evidence" style={{ '--evidence-width': `${drawerWidth}px` }}>
       <header className="chat-topbar">
-        {!sidebarOpen && (
-          <button className="sidebar-topbar-button" onClick={onOpenSidebar} aria-label="Mở menu">
-            Menu
-          </button>
-        )}
-        <div>
-          <p className="eyebrow">Hỏi đáp</p>
-          <h2>Chat với BoneRAG</h2>
-          <span>F5 tạo phiên mới. Lịch sử xem lại nằm ở tab riêng.</span>
+        <div className="topbar-left">
+          {!sidebarOpen && (
+            <button className="sidebar-topbar-button" onClick={onOpenSidebar} aria-label="Mở menu">
+              Menu
+            </button>
+          )}
+          <div>
+            <p className="eyebrow">Hỏi đáp</p>
+            <h2>Chat với BoneRAG</h2>
+            <span>F5 tạo phiên mới. Lịch sử xem lại nằm ở tab riêng.</span>
+          </div>
+        </div>
+        <div className="topbar-model-selector">
+          <ModelSelector />
         </div>
       </header>
 

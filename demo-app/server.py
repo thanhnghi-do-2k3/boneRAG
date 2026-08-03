@@ -21,6 +21,7 @@ import argparse
 import json
 import mimetypes
 import sys
+import threading
 import time
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
@@ -57,6 +58,9 @@ SESSION_LOGGER = SessionLogger()
 EVALUATOR = BoneRAGEvaluator()
 
 
+_PIPELINE_LOCK = threading.Lock()
+
+
 def _pipeline_cache_key(config: dict) -> str:
     return f"{config['encoder']}|{config['generator']}|{config.get('gemini_model', '')}|{config['top_k']}|{config['min_similarity']}"
 
@@ -65,25 +69,22 @@ def _get_pipeline(config: dict | None = None) -> BoneRAGPipeline:
     """Return a cached pipeline for the given config, or for ACTIVE_CONFIG."""
     cfg = config or _ACTIVE_CONFIG
     key = _pipeline_cache_key(cfg)
-    if key not in _PIPELINE_CACHE:
-        encoder = get_multimodal_encoder(mode=cfg.get("encoder", "biomedclip"))
-        gen_name = cfg.get("generator", "template")
-        gen_kwargs: dict = {}
-        if gen_name == "gemini":
-            gen_kwargs["api_key"] = cfg.get("gemini_api_key", "")
-            gen_kwargs["model"] = cfg.get("gemini_model", "gemini-1.5-flash")
-        generator = get_generator(gen_name, **gen_kwargs)
-        _PIPELINE_CACHE[key] = BoneRAGPipeline(
-            encoder=encoder,
-            generator=generator,
-            top_k=int(cfg.get("top_k", 4)),
-            min_similarity=float(cfg.get("min_similarity", 0.02)),
-        )
-    return _PIPELINE_CACHE[key]
-
-
-# Initialise default pipeline eagerly at startup
-_get_pipeline()
+    with _PIPELINE_LOCK:
+        if key not in _PIPELINE_CACHE:
+            encoder = get_multimodal_encoder(mode=cfg.get("encoder", "biomedclip"))
+            gen_name = cfg.get("generator", "template")
+            gen_kwargs: dict = {}
+            if gen_name == "gemini":
+                gen_kwargs["api_key"] = cfg.get("gemini_api_key", "")
+                gen_kwargs["model"] = cfg.get("gemini_model", "gemini-1.5-flash")
+            generator = get_generator(gen_name, **gen_kwargs)
+            _PIPELINE_CACHE[key] = BoneRAGPipeline(
+                encoder=encoder,
+                generator=generator,
+                top_k=int(cfg.get("top_k", 4)),
+                min_similarity=float(cfg.get("min_similarity", 0.02)),
+            )
+        return _PIPELINE_CACHE[key]
 
 
 # ---------------------------------------------------------------------------
@@ -419,12 +420,14 @@ def main() -> None:
 
     _ACTIVE_CONFIG["encoder"] = args.encoder
     _ACTIVE_CONFIG["generator"] = args.generator
-    # Re-init default pipeline with CLI args
-    _get_pipeline()
 
     server = ThreadingHTTPServer((args.host, args.port), BoneRAGHandler)
-    print(f"[demo-app] running at http://{args.host}:{args.port}/")
-    print(f"[demo-app] encoder={args.encoder}  generator={args.generator}")
+    print(f"\n[demo-app] 🚀 Server đã khởi động thành công!")
+    print(f"[demo-app] 👉 Truy cập Giao diện UI ngay tại: http://{args.host}:{args.port}/")
+    print(f"[demo-app] Cấu hình Foundation Model: Encoder={args.encoder} | Generator={args.generator}")
+    print(f"[demo-app] Đang tải mô hình vào RAM trong background (sẽ sẵn sàng khi có truy vấn)...")
+    threading.Thread(target=_get_pipeline, args=(_ACTIVE_CONFIG,), daemon=True).start()
+
     try:
         server.serve_forever()
     except KeyboardInterrupt:
