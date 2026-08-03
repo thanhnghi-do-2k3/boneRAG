@@ -1,10 +1,12 @@
 """Baseline & Multimodal BoneRAG pipeline.
 
-Milestone 2 Architecture:
+Milestone 3 Architecture:
 1. Multi-level indexing (Text Metadata + Full Image + ROI Fracture Crops).
 2. BiomedCLIP / Multimodal vector encoder with fallback.
 3. FAISS-backed Vector Index with fallback.
 4. Domain-aware reranking & evidence grounding.
+5. Pluggable generator (TemplateGenerator | GeminiGenerator | ...).
+6. Research session logging & evaluation integration.
 """
 
 from __future__ import annotations
@@ -15,6 +17,7 @@ from typing import Iterator
 
 from .data import ImageRecord, SAMPLE_RECORDS
 from .encoder import BaseMultimodalEncoder, get_multimodal_encoder
+from .generator import AVAILABLE_GENERATORS, BaseGenerator, TemplateGenerator, get_generator
 from .vector_index import FAISSVectorIndex, InMemoryVectorIndex, SearchHit, get_vector_index
 
 
@@ -54,18 +57,20 @@ class PipelineResult:
 
 
 class BoneRAGPipeline:
-    """Multimodal BoneRAG pipeline with FAISS index & BiomedCLIP / ROI support."""
+    """Multimodal BoneRAG pipeline with FAISS index, BiomedCLIP/ROI support & pluggable generator."""
 
     def __init__(
         self,
         records: list[ImageRecord] | None = None,
         encoder: BaseMultimodalEncoder | None = None,
+        generator: BaseGenerator | None = None,
         top_k: int = 4,
         min_similarity: float = 0.02,
     ) -> None:
         self.records = records or SAMPLE_RECORDS
         self.record_by_id = {record.image_id: record for record in self.records}
         self.encoder = encoder or get_multimodal_encoder(mode="auto")
+        self.generator = generator or TemplateGenerator()
         self.top_k = top_k
         self.min_similarity = min_similarity
         self.index = self._build_index()
@@ -209,26 +214,8 @@ class BoneRAGPipeline:
         return evidence
 
     def generate_answer(self, question: str, evidence: list[Evidence], used_retrieval: bool) -> str:
-        """Template generator used until a real MLLM is plugged in."""
-
-        if not used_retrieval:
-            return (
-                "Baseline không tìm thấy bằng chứng ảnh đủ liên quan. "
-                "Hệ thống nên hỏi thêm ảnh X-quang/câu hỏi cụ thể hơn thay vì đoán."
-            )
-
-        top = evidence[0]
-        supporting = "; ".join(
-            f"{item.title} ({item.body_part}, {item.diagnosis}, score={item.rerank_score:.3f})"
-            for item in evidence[:3]
-        )
-        return (
-            f"Câu hỏi: {question}\n\n"
-            f"Kết luận Baseline: evidence gần nhất là '{top.title}', vùng {top.region}, "
-            f"nhãn {top.diagnosis}. Ghi chú bằng chứng: {top.evidence_note}\n\n"
-            f"Các ca được dùng để tham chiếu: {supporting}.\n\n"
-            "Lưu ý: đây là baseline kỹ thuật để minh họa Image RAG, không phải chẩn đoán y khoa."
-        )
+        """Delegate answer generation to the plugged-in generator."""
+        return self.generator.generate(question, evidence, used_retrieval)
 
     def answer(self, question: str) -> PipelineResult:
         """Run the full Baseline contract: q -> answer + evidence."""
@@ -245,10 +232,17 @@ class BoneRAGPipeline:
             evidence=evidence,
             debug={
                 "encoder_type": self.encoder.__class__.__name__,
+                "generator_type": self.generator.name,
                 "index_type": self.index.__class__.__name__,
                 "raw_hits": [asdict(hit) for hit in hits],
                 "top_hit_score": hits[0].score if hits else 0.0,
                 "evidence_count": len(evidence),
+                "model_config": {
+                    "encoder": self.encoder.__class__.__name__,
+                    "generator": self.generator.name,
+                    "top_k": self.top_k,
+                    "min_similarity": self.min_similarity,
+                },
             },
         )
 

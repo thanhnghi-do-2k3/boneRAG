@@ -1,7 +1,8 @@
 import { Button } from '../design-system/Button';
 import { XrayPreview } from './XrayPreview';
+import { SessionFeedback } from './SessionFeedback';
 
-export function ChatMessage({ message, onShowEvidence }) {
+export function ChatMessage({ message, onShowEvidence, sessionId }) {
   const hasEvidence = (message.evidence ?? []).length > 0;
   const images = Array.isArray(message.images)
     ? message.images
@@ -45,6 +46,10 @@ export function ChatMessage({ message, onShowEvidence }) {
           <Button className="evidence-link" onClick={onShowEvidence}>
             Xem {message.evidence.length} evidence
           </Button>
+        )}
+
+        {message.role === 'assistant' && message.status === 'done' && sessionId && (
+          <SessionFeedback sessionId={sessionId} />
         )}
       </article>
     </div>

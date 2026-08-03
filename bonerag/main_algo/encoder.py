@@ -151,4 +151,30 @@ def get_multimodal_encoder(mode: str = "auto") -> BaseMultimodalEncoder:
             return BiomedCLIPEncoder()
         except Exception:
             pass
+    if mode == "clip":
+        try:
+            return BiomedCLIPEncoder(model_name="ViT-B-32", pretrained="openai")
+        except Exception:
+            pass
     return HashingTextEncoder()
+
+
+AVAILABLE_ENCODERS = {
+    "hashing": {
+        "label": "Hashing Encoder (Baseline)",
+        "description": "Lightweight deterministic feature-hashing. No dependencies, instant startup.",
+        "requires_download": False,
+    },
+    "biomedclip": {
+        "label": "BiomedCLIP (Microsoft)",
+        "description": "Biomedical CLIP from PubMed literature. Best for medical image understanding.",
+        "requires_download": True,
+        "download_size_mb": 400,
+    },
+    "clip": {
+        "label": "CLIP ViT-B/32 (OpenAI)",
+        "description": "General-purpose CLIP vision encoder. Lighter than BiomedCLIP.",
+        "requires_download": True,
+        "download_size_mb": 350,
+    },
+}

@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useReducer, useRef, useState } from 'react';
 import { Sidebar } from './components/Sidebar';
+import { ModelSelector } from './components/ModelSelector';
 import { fetchRecords, openAnswerStream } from './services/boneragApi';
 import { buildExportPayload, clearStoredHistory, persistHistorySession } from './services/historyStorage';
 import { chatReducer, initialChatState, makeSessionId } from './state/chatReducer';
@@ -9,6 +10,7 @@ import { ImageLibraryScreen } from './views/ImageLibraryScreen';
 import { LogScreen } from './views/LogScreen';
 import { PipelineScreen } from './views/PipelineScreen';
 import { QuestionScreen } from './views/QuestionScreen';
+import ResearchDashboard from './views/ResearchDashboard';
 
 export function App() {
   const [state, dispatch] = useReducer(chatReducer, initialChatState);
@@ -77,7 +79,13 @@ export function App() {
     dispatch({ type: 'stream-start', question: trimmed, userMessage, assistantMessage });
     dispatch({ type: 'set-question', question: '' });
 
-    const source = openAnswerStream(pipelineQuestion);
+    const source = openAnswerStream(pipelineQuestion, {
+      sessionId: sessionIdRef.current,
+      questionRaw: trimmed,
+      attachedImage: state.selectedImage
+        ? { image_id: state.selectedImage.image_id, source: state.selectedImage.data_url ? 'clipboard_paste' : 'library' }
+        : null,
+    });
     eventSourceRef.current = source;
 
     source.onmessage = (message) => {
@@ -253,6 +261,7 @@ export function App() {
         {state.screen === 'logs' && <LogScreen logs={state.logs} rawHits={rawHits} running={state.running} />}
         {state.screen === 'pipeline' && <PipelineScreen records={state.records} />}
         {state.screen === 'evaluation' && <EvaluationScreen />}
+        {state.screen === 'research' && <ResearchDashboard />}
         {state.screen === 'history' && (
           <HistoryScreen
             history={state.history}

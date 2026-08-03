@@ -1,0 +1,30 @@
+[
+  {
+    "question": "Wrist fracture X-ray",
+    "expected_evidence_ids": ["fracatlas-fractured-img0001351"],
+    "expected_diagnosis": "Fractured",
+    "expected_body_part": "Wrist",
+    "notes": "Bootstrap ground truth from SAMPLE_RECORDS"
+  },
+  {
+    "question": "Hip fracture diagnosis",
+    "expected_evidence_ids": ["fracatlas-fractured-img0000307"],
+    "expected_diagnosis": "Fractured",
+    "expected_body_part": "Hip",
+    "notes": "Bootstrap ground truth from SAMPLE_RECORDS"
+  },
+  {
+    "question": "Normal bone X-ray hand",
+    "expected_evidence_ids": ["fracatlas-normal-img0000000"],
+    "expected_diagnosis": "Normal",
+    "expected_body_part": "Hand",
+    "notes": "Bootstrap ground truth from SAMPLE_RECORDS"
+  },
+  {
+    "question": "Radius fracture tibia",
+    "expected_evidence_ids": ["fracatlas-fractured-img0000019"],
+    "expected_diagnosis": "Fractured",
+    "expected_body_part": "Wrist",
+    "notes": "Bootstrap ground truth from SAMPLE_RECORDS"
+  }
+]

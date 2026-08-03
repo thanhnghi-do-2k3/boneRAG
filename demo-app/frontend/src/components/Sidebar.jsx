@@ -1,5 +1,6 @@
 import { Button } from '../design-system/Button';
 import { StatGrid } from '../design-system/StatGrid';
+import { ModelSelector } from './ModelSelector';
 
 const screens = [
   ['qa', 'Hỏi đáp'],
@@ -7,6 +8,7 @@ const screens = [
   ['logs', 'Log'],
   ['pipeline', 'Pipeline'],
   ['evaluation', 'Đánh giá'],
+  ['research', '🔬 Nghiên cứu'],
   ['history', 'Lịch sử'],
 ];
 
@@ -31,6 +33,10 @@ export function Sidebar({ open, activeScreen, stats, onClose, onScreenChange, on
           </Button>
         ))}
       </nav>
+
+      <div className="side-model-selector">
+        <ModelSelector />
+      </div>
 
       <div className="side-actions">
         <Button className="theme-toggle" onClick={onExport}>
