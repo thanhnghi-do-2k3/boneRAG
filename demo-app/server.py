@@ -120,22 +120,22 @@ def _pipeline_cache_key(config: dict) -> str:
     return f"{config['encoder']}|{config['generator']}|{config.get('gemini_model', '')}|{config.get('openai_api_key', '')}|{config['top_k']}|{config['min_similarity']}"
 
 
+def _normalize_generator_name(gen_name: str) -> str:
+    if gen_name not in AVAILABLE_GENERATORS:
+        return "local_context_synth"
+    return gen_name
+
+
 def _get_pipeline(config: dict | None = None) -> BoneRAGPipeline:
     """Return a cached pipeline for the given config, or for ACTIVE_CONFIG."""
     cfg = config or _ACTIVE_CONFIG
-    key = _pipeline_cache_key(cfg)
+    encoder_name = cfg.get("encoder", "biomedclip")
+    gen_name = _normalize_generator_name(cfg.get("generator", "local_context_synth"))
+    key = f"{encoder_name}|{gen_name}|{cfg.get('top_k', 4)}|{cfg.get('min_similarity', 0.02)}"
     with _PIPELINE_LOCK:
         if key not in _PIPELINE_CACHE:
-            encoder = get_multimodal_encoder(mode=cfg.get("encoder", "biomedclip"))
-            gen_name = cfg.get("generator", "medical_llm")
-            gen_kwargs: dict = {}
-            if gen_name == "gemini":
-                gen_kwargs["api_key"] = cfg.get("gemini_api_key", "")
-                gen_kwargs["model"] = cfg.get("gemini_model", "gemini-1.5-flash")
-            elif gen_name == "openai":
-                gen_kwargs["api_key"] = cfg.get("openai_api_key", "")
-                gen_kwargs["model"] = cfg.get("openai_model", "gpt-4o-mini")
-            generator = get_generator(gen_name, **gen_kwargs)
+            encoder = get_multimodal_encoder(mode=encoder_name)
+            generator = get_generator(gen_name)
             _PIPELINE_CACHE[key] = BoneRAGPipeline(
                 encoder=encoder,
                 generator=generator,
@@ -426,6 +426,7 @@ class BoneRAGHandler(BaseHTTPRequestHandler):
             return
 
         if route == "/api/model-configs":
+            _ACTIVE_CONFIG["generator"] = _normalize_generator_name(_ACTIVE_CONFIG.get("generator", ""))
             self._send_json({
                 "active": _ACTIVE_CONFIG,
                 "encoders": AVAILABLE_ENCODERS,
@@ -466,11 +467,10 @@ class BoneRAGHandler(BaseHTTPRequestHandler):
 
         if route == "/api/set-config":
             global _ACTIVE_CONFIG
+            raw_gen = str(payload.get("generator", _ACTIVE_CONFIG.get("generator", "local_context_synth")))
             _ACTIVE_CONFIG = {
                 "encoder": str(payload.get("encoder", _ACTIVE_CONFIG.get("encoder", "biomedclip"))),
-                "generator": str(payload.get("generator", _ACTIVE_CONFIG.get("generator", "template"))),
-                "gemini_api_key": str(payload.get("gemini_api_key", _ACTIVE_CONFIG.get("gemini_api_key", ""))),
-                "gemini_model": str(payload.get("gemini_model", _ACTIVE_CONFIG.get("gemini_model", "gemini-1.5-flash"))),
+                "generator": _normalize_generator_name(raw_gen),
                 "top_k": int(payload.get("top_k", _ACTIVE_CONFIG.get("top_k", 4))),
                 "min_similarity": float(payload.get("min_similarity", _ACTIVE_CONFIG.get("min_similarity", 0.02))),
             }
