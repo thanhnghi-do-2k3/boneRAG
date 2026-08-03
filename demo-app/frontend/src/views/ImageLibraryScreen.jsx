@@ -3,7 +3,7 @@ import { Button } from '../design-system/Button';
 import { ScreenHeader } from '../design-system/ScreenHeader';
 import { XrayPreview } from '../components/XrayPreview';
 
-export function ImageLibraryScreen({ records, selectedImage }) {
+export function ImageLibraryScreen({ records, selectedImage, onSelectImage }) {
   const [toast, setToast] = useState(null);
 
   useEffect(() => {
@@ -105,7 +105,8 @@ export function ImageLibraryScreen({ records, selectedImage }) {
                 <span>{record.diagnosis}</span>
               </div>
               <div className="image-case-actions">
-                <Button onClick={() => copyRecordImage(record)}>Copy ảnh</Button>
+                <Button onClick={() => onSelectImage?.(record)}>📌 Chọn case để RAG</Button>
+                <Button className="ghost-button" onClick={() => copyRecordImage(record)}>Copy ảnh</Button>
                 <Button className="ghost-button" onClick={() => copyRecordDescription(record)}>Copy mô tả</Button>
               </div>
             </div>

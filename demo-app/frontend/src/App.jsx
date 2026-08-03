@@ -260,6 +260,10 @@ export function App() {
           <ImageLibraryScreen
             records={state.records}
             selectedImage={state.selectedImage}
+            onSelectImage={(image) => {
+              dispatch({ type: 'select-image', image });
+              dispatch({ type: 'set-screen', screen: 'qa' });
+            }}
           />
         )}
         {state.screen === 'logs' && <LogScreen logs={state.logs} rawHits={rawHits} running={state.running} />}
