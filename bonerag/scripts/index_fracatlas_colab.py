@@ -37,17 +37,14 @@ model.to(device)
 model.eval()
 
 # Step 3: Download FracAtlas Dataset
-print("[3/5] Downloading FracAtlas Dataset...")
-# Method 1: Public GitHub repository
-os.system("git clone --depth 1 https://github.com/XLR8-07/FracAtlas.git ./fracatlas_repo || true")
+print("[3/5] Downloading full FracAtlas Dataset (4,082 images)...")
+os.system("wget -q --show-progress -O fracatlas_full.zip 'https://huggingface.co/datasets/runananya/fracatlas/resolve/main/archive%20%289%29.zip' || curl -L -o fracatlas_full.zip 'https://figshare.com/ndownloader/articles/22276042/versions/1'")
 
-image_files = list(Path("./fracatlas_repo").rglob("*.jpg")) + list(Path("./fracatlas_repo").rglob("*.png"))
-# Method 2: Figshare direct zip download fallback
-if not image_files:
-    print("Downloading direct zip from Figshare...")
-    os.system("wget -q -O FracAtlas.zip 'https://figshare.com/ndownloader/articles/22276042/versions/1' || curl -L -o FracAtlas.zip 'https://figshare.com/ndownloader/articles/22276042/versions/1'")
-    os.system("unzip -q -o FracAtlas.zip -d ./fracatlas_repo || true")
-    image_files = list(Path("./fracatlas_repo").rglob("*.jpg")) + list(Path("./fracatlas_repo").rglob("*.png"))
+print("Unzipping FracAtlas dataset...")
+os.system("unzip -q -o fracatlas_full.zip -d ./fracatlas_repo || true")
+
+image_files = list(Path("./fracatlas_repo").rglob("*.jpg")) + list(Path("./fracatlas_repo").rglob("*.jpeg")) + list(Path("./fracatlas_repo").rglob("*.png"))
+print(f"Found {len(image_files)} X-ray images in FracAtlas dataset!")
 
 # Step 4: Encode Dataset Images & Text with BiomedCLIP
 print("[4/5] Encoding FracAtlas images & metadata on GPU...")
