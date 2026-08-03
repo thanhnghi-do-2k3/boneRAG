@@ -207,11 +207,14 @@ class BoneRAGPipeline:
         merged_hits.sort(key=lambda item: item.score, reverse=True)
         return merged_hits[: self.top_k]
 
-    def should_retrieve(self, question: str, hits: list[SearchHit]) -> bool:
+    def should_retrieve(self, question: str, hits: list[SearchHit], has_image: bool = False) -> bool:
         """Gate delta: skip evidence when the question is not image/medical specific."""
 
         if not hits:
             return False
+
+        if has_image:
+            return True
 
         lower_q = question.lower()
         if "selected image context:" in lower_q or "image_id:" in lower_q:
@@ -258,15 +261,14 @@ class BoneRAGPipeline:
             record = self.record_by_id[hit.record_id]
             tokenize_fn = getattr(self.encoder, "tokenize", lambda s: s.lower().split())
             metadata_terms = {
-                record.body_part.lower(),
-                record.diagnosis.lower(),
-                record.fracture_type.lower(),
+                *tokenize_fn(record.title),
+                *tokenize_fn(record.body_part),
+                *tokenize_fn(record.diagnosis),
                 *tokenize_fn(record.region),
+                *tokenize_fn(record.evidence_note),
             }
             overlap = len(tokens & metadata_terms)
-            diagnosis_boost = 0.08 if record.diagnosis.lower() in tokens else 0.0
-            body_part_boost = 0.05 if record.body_part.lower() in tokens else 0.0
-            rerank_score = hit.score + 0.04 * overlap + diagnosis_boost + body_part_boost
+            rerank_score = hit.score + (0.05 * overlap)
             evidence.append(
                 Evidence(
                     image_id=record.image_id,
@@ -288,8 +290,8 @@ class BoneRAGPipeline:
         return evidence
 
     def generate_answer(self, question: str, evidence: list[Evidence], used_retrieval: bool) -> str:
-        """Delegate answer generation to the plugged-in generator."""
-        return self.generator.generate(question, evidence, used_retrieval)
+        """Call answer generator layer to construct final natural-language response."""
+        return self.generator.generate(question, evidence, used_retrieval=used_retrieval)
 
     def answer(self, question: str) -> PipelineResult:
         """Run the full Baseline contract: q -> answer + evidence."""
@@ -366,7 +368,7 @@ class BoneRAGPipeline:
             "hits": [asdict(hit) for hit in hits],
         }
 
-        used = self.should_retrieve(question, hits)
+        used = self.should_retrieve(question, hits, has_image=has_image)
         if not used:
             yield {
                 "type": "stage",
