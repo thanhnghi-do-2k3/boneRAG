@@ -4,7 +4,7 @@ import sys
 
 sys.path.append(str(Path(__file__).resolve().parents[1]))
 
-from main_algo.encoder import HashingTextEncoder, get_multimodal_encoder
+from main_algo.encoder import get_multimodal_encoder
 from main_algo.vector_index import FAISSVectorIndex, InMemoryVectorIndex, SearchHit, get_vector_index
 from main_algo.pipeline import BoneRAGPipeline
 

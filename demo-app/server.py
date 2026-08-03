@@ -66,7 +66,7 @@ def _get_pipeline(config: dict | None = None) -> BoneRAGPipeline:
     cfg = config or _ACTIVE_CONFIG
     key = _pipeline_cache_key(cfg)
     if key not in _PIPELINE_CACHE:
-        encoder = get_multimodal_encoder(mode=cfg.get("encoder", "hashing"))
+        encoder = get_multimodal_encoder(mode=cfg.get("encoder", "biomedclip"))
         gen_name = cfg.get("generator", "template")
         gen_kwargs: dict = {}
         if gen_name == "gemini":
@@ -205,7 +205,7 @@ class BoneRAGHandler(BaseHTTPRequestHandler):
                 # --- Log session ---
                 latency_ms = int((time.monotonic() - start_time) * 1000)
                 model_cfg = final_result.get("debug", {}).get("model_config") or {
-                    "encoder": _ACTIVE_CONFIG.get("encoder", "hashing"),
+                    "encoder": _ACTIVE_CONFIG.get("encoder", "biomedclip"),
                     "generator": _ACTIVE_CONFIG.get("generator", "template"),
                     "top_k": _ACTIVE_CONFIG.get("top_k", 4),
                     "min_similarity": _ACTIVE_CONFIG.get("min_similarity", 0.02),
@@ -357,7 +357,7 @@ class BoneRAGHandler(BaseHTTPRequestHandler):
         if route == "/api/set-config":
             global _ACTIVE_CONFIG
             _ACTIVE_CONFIG = {
-                "encoder": str(payload.get("encoder", _ACTIVE_CONFIG.get("encoder", "hashing"))),
+                "encoder": str(payload.get("encoder", _ACTIVE_CONFIG.get("encoder", "biomedclip"))),
                 "generator": str(payload.get("generator", _ACTIVE_CONFIG.get("generator", "template"))),
                 "gemini_api_key": str(payload.get("gemini_api_key", _ACTIVE_CONFIG.get("gemini_api_key", ""))),
                 "gemini_model": str(payload.get("gemini_model", _ACTIVE_CONFIG.get("gemini_model", "gemini-1.5-flash"))),

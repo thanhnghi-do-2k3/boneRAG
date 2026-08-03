@@ -3,17 +3,14 @@
 from __future__ import annotations
 
 from abc import ABC, abstractmethod
-import hashlib
 import math
 from pathlib import Path
-import re
 from typing import Any
 
 import base64
 import io
 
 Vector = tuple[float, ...]
-TOKEN_PATTERN = re.compile(r"[a-z0-9]+")
 
 
 def normalize(values: list[float] | Any) -> Vector:
@@ -134,65 +131,17 @@ class BiomedCLIPEncoder(BaseMultimodalEncoder):
         return self.encode_image(image)
 
 
-class HashingTextEncoder(BaseMultimodalEncoder):
-    """Deterministic feature-hashing text & visual encoder.
-
-    Provides high-speed, lightweight encoding for testing & baseline fallback.
-    """
-
-    def __init__(self, dim: int = 256) -> None:
-        if dim <= 0:
-            raise ValueError("dim must be positive")
-        self.dim = dim
-
-    def tokenize(self, text: str) -> list[str]:
-        return TOKEN_PATTERN.findall(text.lower())
-
-    def encode_text(self, text: str) -> Vector:
-        buckets = [0.0] * self.dim
-        for token in self.tokenize(text):
-            digest = hashlib.sha1(token.encode("utf-8")).digest()
-            index = int.from_bytes(digest[:4], "big") % self.dim
-            sign = 1.0 if digest[4] & 1 else -1.0
-            buckets[index] += sign
-        return normalize(buckets)
-
-    def encode_image(self, image_input: str | Path | Any) -> Vector:
-        if isinstance(image_input, (str, Path)):
-            text_repr = f"image {Path(image_input).name}"
-        else:
-            text_repr = "image visual content xray"
-        return self.encode_text(text_repr)
-
-    def encode_roi(self, image_input: str | Path | Any, bbox: list[float]) -> Vector:
-        roi_str = f"roi lesion region bbox {bbox} " + (
-            str(image_input) if isinstance(image_input, (str, Path)) else "crop"
-        )
-        return self.encode_text(roi_str)
-
-    def _encode_pil_image_bytes(self, raw_bytes: bytes) -> Vector:
-        """Encode raw image bytes via filename-text proxy for hashing encoder."""
-        # Hashing encoder has no real vision; encode a representative text
-        return self.encode_text("pasted xray bone image grayscale fracture")
-
-
 def get_multimodal_encoder(mode: str = "biomedclip") -> BaseMultimodalEncoder:
-    """Return BiomedCLIPEncoder or CLIPViTB32Encoder as default foundation models."""
-    if mode in ("auto", "biomedclip"):
-        try:
-            return BiomedCLIPEncoder()
-        except Exception as exc:
-            print(f"[encoder] BiomedCLIP init warning: {exc}, falling back to OpenAI CLIP ViT-B/32")
+    """Return BiomedCLIPEncoder or CLIPViTB32Encoder as deep research foundation models."""
     if mode == "clip":
-        try:
-            return BiomedCLIPEncoder(model_name="ViT-B-32", pretrained="openai")
-        except Exception:
-            pass
-    # Fallback to standard OpenAI CLIP if BiomedCLIP hub download fails
-    try:
         return BiomedCLIPEncoder(model_name="ViT-B-32", pretrained="openai")
-    except Exception:
-        return HashingTextEncoder()
+
+    # Default to BiomedCLIP (PubMedBERT + ViT-B/16)
+    try:
+        return BiomedCLIPEncoder()
+    except Exception as exc:
+        print(f"[encoder] BiomedCLIP init warning: {exc}, falling back to OpenAI CLIP ViT-B/32")
+        return BiomedCLIPEncoder(model_name="ViT-B-32", pretrained="openai")
 
 
 AVAILABLE_ENCODERS = {

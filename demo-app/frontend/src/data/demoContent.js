@@ -9,7 +9,7 @@ export const stageLabels = {
 
 export const pipelineSteps = [
   ['Query', 'Người dùng nhập câu hỏi về ảnh X-quang xương.'],
-  ['Encode', 'HashingTextEncoder biến câu hỏi thành vector truy vấn.'],
+  ['Encode', 'BiomedCLIP (PubMedBERT + ViT-B/16) mã hóa câu hỏi và hình ảnh thành vector đa phương thức.'],
   ['Retrieve', 'InMemoryVectorIndex lấy top-k case gần nhất.'],
   ['Gate', 'Cổng quyết định có dùng evidence hay không.'],
   ['Rerank', 'Cộng điểm body part, diagnosis và region.'],
