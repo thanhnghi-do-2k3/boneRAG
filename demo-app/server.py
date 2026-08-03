@@ -70,7 +70,7 @@ class BoneRAGHandler(BaseHTTPRequestHandler):
             raw = f"data: {json.dumps(event, ensure_ascii=False)}\n\n".encode("utf-8")
             self.wfile.write(raw)
             self.wfile.flush()
-            time.sleep(0.18)
+            time.sleep(0.02)
 
     def _record_to_public_payload(self, record: dict[str, object]) -> dict[str, object]:
         payload = dict(record)

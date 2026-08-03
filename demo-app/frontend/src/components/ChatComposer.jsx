@@ -13,9 +13,19 @@ export function ChatComposer({ question, setQuestion, running, selectedImage, on
   }, [question]);
 
   function submit(event) {
-    event.preventDefault();
+    if (event) event.preventDefault();
     if (!canSend) return;
     runStream();
+    setQuestion('');
+  }
+
+  function handleKeyDown(event) {
+    if (event.key === 'Enter' && !event.shiftKey) {
+      event.preventDefault();
+      if (canSend) {
+        submit(event);
+      }
+    }
   }
 
   function tryPasteImage(event) {
@@ -39,8 +49,9 @@ export function ChatComposer({ question, setQuestion, running, selectedImage, on
           rows="1"
           value={question}
           onChange={(event) => setQuestion(event.target.value)}
+          onKeyDown={handleKeyDown}
           onPaste={handlePaste}
-          placeholder={selectedImage ? 'Nhập câu hỏi về ảnh đã chọn (Ctrl+V để dán ảnh khác)...' : 'Ctrl+V để dán ảnh hoặc nhập câu hỏi...'}
+          placeholder={selectedImage ? 'Nhập câu hỏi về ảnh (Nhấn Enter để gửi, Shift+Enter xuống dòng)...' : 'Nhập câu hỏi hoặc dán ảnh (Enter để gửi, Shift+Enter xuống dòng)...'}
         />
         <Button type="submit" className="send-button" disabled={!canSend} aria-label="Gửi câu hỏi">
           {running ? (

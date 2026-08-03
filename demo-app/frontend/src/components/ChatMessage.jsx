@@ -20,7 +20,7 @@ export function ChatMessage({ message, onShowEvidence }) {
               title={message.image.title}
               className="xray-thumb"
             />
-            <div>
+            <div className="bubble-image-info">
               <strong>{message.image.title}</strong>
               <span>{message.image.image_id}</span>
             </div>

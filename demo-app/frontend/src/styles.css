@@ -483,29 +483,55 @@ textarea::placeholder {
   stroke-width: 2.6;
 }
 
-.bubble-image-context > div:nth-child(2) {
-  display: grid;
-  gap: 2px;
-  min-width: 0;
+.bubble-image-context {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin-top: 10px;
+  padding: 8px 12px;
+  border: 1px solid var(--line);
+  border-radius: 16px;
+  background: rgba(255, 255, 255, 0.04);
+  max-width: 100%;
+  overflow: hidden;
+  box-sizing: border-box;
 }
 
-.bubble-image-context strong {
+.bubble-image-info {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+  flex: 1;
+  overflow: hidden;
+}
+
+.bubble-image-info strong {
+  font-size: 0.88rem;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
 }
 
-.bubble-image-context span {
+.bubble-image-info span {
   color: var(--muted);
-  font-size: 0.8rem;
+  font-size: 0.78rem;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
-.xray-thumb {
-  flex: 0 0 auto;
-  width: 46px;
-  height: 46px;
-  border-radius: 14px;
-  min-height: 46px;
+.xray-thumb,
+img.xray-thumb,
+.xray-image.xray-thumb {
+  flex: 0 0 54px !important;
+  width: 54px !important;
+  height: 54px !important;
+  max-width: 54px !important;
+  max-height: 54px !important;
+  aspect-ratio: 1 / 1 !important;
+  border-radius: 12px !important;
+  object-fit: cover !important;
 }
 
 div.xray-thumb {
@@ -518,33 +544,6 @@ div.xray-thumb {
     radial-gradient(circle at 50% 38%, #d6dce0, #657173 44%, #141b1d 76%);
   color: #fff;
   text-transform: uppercase;
-}
-
-.xray-thumb span {
-  color: rgba(255, 255, 255, 0.78);
-  font-size: 0.54rem;
-  letter-spacing: 0.06em;
-}
-
-.xray-thumb strong {
-  font-size: 0.62rem;
-  line-height: 1;
-}
-
-img.xray-thumb {
-  padding: 0;
-  object-fit: cover;
-}
-
-.bubble-image-context {
-  display: flex;
-  align-items: center;
-  gap: 10px;
-  margin-top: 12px;
-  padding: 8px;
-  border: 1px solid var(--line);
-  border-radius: 18px;
-  background: rgba(255, 255, 255, 0.04);
 }
 
 .evidence-drawer {

@@ -75,6 +75,7 @@ export function App() {
     };
     assistantIdRef.current = assistantMessage.id;
     dispatch({ type: 'stream-start', question: trimmed, userMessage, assistantMessage });
+    dispatch({ type: 'set-question', question: '' });
 
     const source = openAnswerStream(pipelineQuestion);
     eventSourceRef.current = source;
