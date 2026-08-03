@@ -133,8 +133,7 @@ class BoneRAGPipeline:
 
         if not hits:
             return False
-        
-        # If image context is present in pipeline question, always retrieve evidence
+
         lower_q = question.lower()
         if "selected image context:" in lower_q or "image_id:" in lower_q:
             return True
