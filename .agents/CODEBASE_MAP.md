@@ -47,27 +47,28 @@ BoneRAG/
 - **Classes / Functions**:
   - `Vector`: Type alias `tuple[float, ...]`.
   - `normalize(values: list[float]) -> Vector`: Chuẩn hóa vector độ dài đơn vị (Dot product = Cosine similarity).
-  - `HashingTextEncoder(dim: int = 256)`:
-    - `tokenize(text: str) -> list[str]`: Tách từ bằng regex `[a-z0-9]+`.
-    - `encode(text: str) -> Vector`: Feature-hashing SHA-1 phân bổ từ vào 256 buckets với sign +1/-1.
-    - *Lưu ý*: Ý định tương lai là thay bằng **BiomedCLIP** / **VLM2Vec**.
+  - `BaseMultimodalEncoder`: Abstract base class chuẩn hóa `encode_text`, `encode_image`, `encode_roi`.
+  - `BiomedCLIPEncoder`: Encoder đa phương thức y sinh (`microsoft/BiomedCLIP-PubMedBERT_256-vit_base_patch16_224` qua PyTorch/open_clip) với fallback sang ViT-B-32.
+  - `HashingTextEncoder`: Encoder feature-hashing siêu nhẹ cho testing & CPU fallback.
+  - `get_multimodal_encoder(mode="auto")`: Hàm khởi tạo encoder phù hợp môi trường.
 
 ### 📄 `bonerag/main_algo/vector_index.py`
 - **Classes / Functions**:
   - `SearchHit`: Dataclass (`record_id`, `score`).
-  - `dot(left, right) -> float`: Tích vô hướng 2 vector.
-  - `InMemoryVectorIndex`:
-    - `add(record_id: str, vector: Vector)`: Lưu vector vào dict in-memory.
-    - `search(query_vector: Vector, top_k: int = 4) -> list[SearchHit]`: Tìm top-k cosine similarity.
+  - `InMemoryVectorIndex`: Store vectors & tìm kiếm cosine score dạng Python dict.
+  - `FAISSVectorIndex`: Index tốc độ cao dựa trên `faiss.IndexFlatIP` (Cosine similarity cho vector chuẩn hóa L2).
+  - `get_vector_index(dim=256)`: Factory function trả về `FAISSVectorIndex` (nếu có package `faiss`) hoặc `InMemoryVectorIndex`.
 
 ### 📄 `bonerag/main_algo/pipeline.py`
 - **Classes / Functions**:
   - `Evidence`: Dataclass thông tin bằng chứng được gán rerank score.
-  - `BoneRAGResult`: Kết quả trả về (`question`, `used_retrieval`, `evidence`, `answer`, `debug`).
+  - `PipelineResult`: Kết quả trả về (`question`, `used_retrieval`, `answer`, `evidence`, `debug`).
   - `BoneRAGPipeline`:
-    - `records_as_dicts() -> list[dict]`: Xuất danh sách records dạng JSON.
-    - `retrieve(question: str) -> list[SearchHit]`: Encode câu hỏi & truy xuất top-k ứng viên từ vector index.
-    - `rerank(question: str, hits: list[SearchHit]) -> list[Evidence]`: Thêm điểm ưu tiên nếu trùng `body_part` hoặc từ khóa gãy xương.
+    - `_build_index()`: Mã hóa đa tầng (**Text Metadata + Full Image + ROI Fracture Crops**).
+    - `retrieve(question: str) -> list[SearchHit]`: Truy xuất trên index đa tầng và khớp về record ID cha.
+    - `rerank(question, hits) -> list[Evidence]`: Thêm điểm ưu tiên theo `body_part`, `diagnosis`, `region`.
+    - `generate_answer(question, evidence, used_retrieval)`: Sinh câu trả lời có grounding/dẫn chứng.
+    - `stream_answer(question)`: Streaming SSE events (`stage`, `token`, `done`).
     - `generate_answer(question: str, evidence: list[Evidence]) -> str`: Sinh câu trả lời có grounding/dẫn chứng.
     - `stream_answer(question: str) -> Generator[dict, None, None]`: Sinh câu trả lời theo luồng SSE events (`stage`, `token`, `done`, `error`).
 

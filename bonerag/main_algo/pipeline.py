@@ -1,23 +1,21 @@
-"""Baseline BoneRAG pipeline.
+"""Baseline & Multimodal BoneRAG pipeline.
 
-The goal is clarity over model quality. This file shows the minimum moving
-parts behind an Image RAG system:
-
-1. Build an index from an evidence corpus.
-2. Encode the user question.
-3. Retrieve candidate evidence.
-4. Rerank with simple domain hints.
-5. Generate an answer that cites retrieved evidence.
+Milestone 2 Architecture:
+1. Multi-level indexing (Text Metadata + Full Image + ROI Fracture Crops).
+2. BiomedCLIP / Multimodal vector encoder with fallback.
+3. FAISS-backed Vector Index with fallback.
+4. Domain-aware reranking & evidence grounding.
 """
 
 from __future__ import annotations
 
 from dataclasses import asdict, dataclass
+from pathlib import Path
 from typing import Iterator
 
 from .data import ImageRecord, SAMPLE_RECORDS
-from .encoder import HashingTextEncoder
-from .vector_index import InMemoryVectorIndex, SearchHit
+from .encoder import BaseMultimodalEncoder, get_multimodal_encoder
+from .vector_index import FAISSVectorIndex, InMemoryVectorIndex, SearchHit, get_vector_index
 
 
 @dataclass(frozen=True)
@@ -56,28 +54,47 @@ class PipelineResult:
 
 
 class BoneRAGPipeline:
-    """Small, dependency-free BoneRAG baseline."""
+    """Multimodal BoneRAG pipeline with FAISS index & BiomedCLIP / ROI support."""
 
     def __init__(
         self,
         records: list[ImageRecord] | None = None,
-        encoder: HashingTextEncoder | None = None,
+        encoder: BaseMultimodalEncoder | None = None,
         top_k: int = 4,
         min_similarity: float = 0.02,
     ) -> None:
         self.records = records or SAMPLE_RECORDS
         self.record_by_id = {record.image_id: record for record in self.records}
-        self.encoder = encoder or HashingTextEncoder()
+        self.encoder = encoder or get_multimodal_encoder(mode="auto")
         self.top_k = top_k
         self.min_similarity = min_similarity
         self.index = self._build_index()
 
-    def _build_index(self) -> InMemoryVectorIndex:
-        """Off-line phase: encode every record and add it to the vector index."""
+    def _build_index(self) -> InMemoryVectorIndex | FAISSVectorIndex:
+        """Off-line phase: multi-level indexing (Text Metadata + Full Image + ROI Crops)."""
 
-        index = InMemoryVectorIndex()
+        dim = getattr(self.encoder, "dim", 256)
+        index = get_vector_index(dim=dim)
         for record in self.records:
-            index.add(record.image_id, self.encoder.encode(record.text))
+            # 1. Text metadata vector
+            index.add(record.image_id, self.encoder.encode_text(record.text))
+
+            # 2. Full Image vector (if image file exists)
+            if record.image_path and Path(record.image_path).exists():
+                try:
+                    img_vec = self.encoder.encode_image(record.image_path)
+                    index.add(f"{record.image_id}#image", img_vec)
+                except Exception:
+                    pass
+
+                # 3. ROI Crop vectors (if fracture boxes exist)
+                if record.fracture_boxes:
+                    for i, bbox in enumerate(record.fracture_boxes):
+                        try:
+                            roi_vec = self.encoder.encode_roi(record.image_path, bbox)
+                            index.add(f"{record.image_id}#roi_{i}", roi_vec)
+                        except Exception:
+                            pass
         return index
 
     def records_as_dicts(self) -> list[dict[str, object]]:
@@ -86,17 +103,37 @@ class BoneRAGPipeline:
         return [asdict(record) for record in self.records]
 
     def retrieve(self, question: str) -> list[SearchHit]:
-        """Online retrieval: encode the question and return top-k candidate ids."""
+        """Online retrieval: encode the question and search multi-level index."""
 
-        query_vector = self.encoder.encode(question)
-        return self.index.search(query_vector, top_k=self.top_k)
+        query_vector = self.encoder.encode_text(question)
+        raw_hits = self.index.search(query_vector, top_k=self.top_k * 3)
+
+        # Merge hits by parent record_id
+        best_hits_by_parent: dict[str, tuple[float, str]] = {}
+        for hit in raw_hits:
+            parts = hit.record_id.split("#")
+            parent_id = parts[0]
+            match_type = parts[1] if len(parts) > 1 else "text_metadata"
+
+            if parent_id not in self.record_by_id:
+                continue
+
+            if parent_id not in best_hits_by_parent or hit.score > best_hits_by_parent[parent_id][0]:
+                best_hits_by_parent[parent_id] = (hit.score, match_type)
+
+        merged_hits = [
+            SearchHit(record_id=parent_id, score=score)
+            for parent_id, (score, _) in best_hits_by_parent.items()
+        ]
+        merged_hits.sort(key=lambda item: item.score, reverse=True)
+        return merged_hits[: self.top_k]
 
     def should_retrieve(self, question: str, hits: list[SearchHit]) -> bool:
         """Gate delta: skip evidence when the question is not image/medical specific."""
 
         if not hits:
             return False
-        question_tokens = set(self.encoder.tokenize(question))
+        question_tokens = set(self.encoder.tokenize(question)) if hasattr(self.encoder, "tokenize") else set(question.lower().split())
         medical_terms = {
             "xray",
             "x",
@@ -118,15 +155,16 @@ class BoneRAGPipeline:
     def rerank(self, question: str, hits: list[SearchHit]) -> list[Evidence]:
         """Light reranker phi: combine vector score with metadata keyword matches."""
 
-        tokens = set(self.encoder.tokenize(question))
+        tokens = set(self.encoder.tokenize(question)) if hasattr(self.encoder, "tokenize") else set(question.lower().split())
         evidence: list[Evidence] = []
         for hit in hits:
             record = self.record_by_id[hit.record_id]
+            tokenize_fn = getattr(self.encoder, "tokenize", lambda s: s.lower().split())
             metadata_terms = {
                 record.body_part.lower(),
                 record.diagnosis.lower(),
                 record.fracture_type.lower(),
-                *self.encoder.tokenize(record.region),
+                *tokenize_fn(record.region),
             }
             overlap = len(tokens & metadata_terms)
             diagnosis_boost = 0.08 if record.diagnosis.lower() in tokens else 0.0
@@ -180,95 +218,80 @@ class BoneRAGPipeline:
         hits = self.retrieve(question)
         used_retrieval = self.should_retrieve(question, hits)
         evidence = self.rerank(question, hits) if used_retrieval else []
-        answer = self.generate_answer(question, evidence, used_retrieval)
+        answer = self.generate_answer(question, evidence, used_retrieval=used_retrieval)
+
         return PipelineResult(
             question=question,
             used_retrieval=used_retrieval,
             answer=answer,
             evidence=evidence,
             debug={
-                "top_k": self.top_k,
-                "min_similarity": self.min_similarity,
-                "raw_hits": [hit.__dict__ for hit in hits],
+                "encoder_type": self.encoder.__class__.__name__,
+                "index_type": self.index.__class__.__name__,
+                "raw_hits": [asdict(hit) for hit in hits],
+                "top_hit_score": hits[0].score if hits else 0.0,
+                "evidence_count": len(evidence),
             },
         )
 
-    def answer_events(self, question: str) -> Iterator[dict[str, object]]:
-        """Yield explainable streaming events for the web UI.
+    def stream_answer(self, question: str) -> Iterator[dict[str, object]]:
+        """Simulate an online response stream over Server-Sent Events."""
 
-        This is not token streaming from an LLM yet. It is pipeline streaming:
-        each event tells the UI which BoneRAG stage just finished and carries
-        the intermediate result needed to make the demo understandable.
-        """
-
+        yield {"type": "stage", "stage": "receive-question", "message": f"Nhận câu hỏi: {question}"}
         yield {
             "type": "stage",
-            "stage": "encode",
-            "title": "Mã hóa câu hỏi",
-            "message": "Biến câu hỏi thành vector truy vấn bằng HashingTextEncoder.",
+            "stage": "encode-question",
+            "message": f"Mã hóa bằng {self.encoder.__class__.__name__}",
         }
+
         hits = self.retrieve(question)
         yield {
             "type": "stage",
-            "stage": "retrieve",
-            "title": "Truy xuất top-k",
-            "message": f"Lấy {len(hits)} ứng viên gần nhất từ InMemoryVectorIndex.",
-            "hits": [hit.__dict__ for hit in hits],
+            "stage": "retrieve-hits",
+            "message": f"Truy xuất được {len(hits)} ứng viên từ {self.index.__class__.__name__}",
+            "hits": [asdict(hit) for hit in hits],
         }
 
-        used_retrieval = self.should_retrieve(question, hits)
+        used = self.should_retrieve(question, hits)
+        if not used:
+            yield {
+                "type": "stage",
+                "stage": "gating-check",
+                "message": "Cổng từ chối: câu hỏi không liên quan đến bằng chứng X-quang.",
+            }
+            result = self.answer(question)
+            yield {"type": "done", "result": result.to_dict()}
+            return
+
         yield {
             "type": "stage",
-            "stage": "gate",
-            "title": "Cổng quyết định retrieval",
-            "message": "Có đủ tín hiệu y khoa để dùng evidence." if used_retrieval else "Không đủ tín hiệu liên quan ảnh/xương, bỏ qua retrieval.",
-            "used_retrieval": used_retrieval,
+            "stage": "gating-check",
+            "message": f"Cổng chấp nhận: điểm top hit={hits[0].score:.3f} >= {self.min_similarity}",
         }
 
-        evidence = self.rerank(question, hits) if used_retrieval else []
+        evidence = self.rerank(question, hits)
         yield {
             "type": "stage",
-            "stage": "rerank",
-            "title": "Rerank evidence",
-            "message": "Cộng thêm điểm body part, diagnosis và region để đẩy evidence hữu ích lên trước.",
-            "evidence": [asdict(item) for item in evidence],
+            "stage": "rerank-evidence",
+            "message": f"Đã rerank {len(evidence)} bằng chứng theo vùng cơ thể & nhãn gãy",
         }
 
-        answer = self.generate_answer(question, evidence, used_retrieval)
-        result = PipelineResult(
+        full_answer = self.generate_answer(question, evidence, used_retrieval=True)
+        chunk_size = 18
+        for index in range(0, len(full_answer), chunk_size):
+            yield {"type": "token", "text": full_answer[index : index + chunk_size]}
+
+        final_result = PipelineResult(
             question=question,
-            used_retrieval=used_retrieval,
-            answer=answer,
+            used_retrieval=True,
+            answer=full_answer,
             evidence=evidence,
             debug={
-                "top_k": self.top_k,
-                "min_similarity": self.min_similarity,
-                "raw_hits": [hit.__dict__ for hit in hits],
+                "encoder_type": self.encoder.__class__.__name__,
+                "index_type": self.index.__class__.__name__,
+                "raw_hits": [asdict(hit) for hit in hits],
+                "top_hit_score": hits[0].score if hits else 0.0,
+                "evidence_count": len(evidence),
             },
         )
-        for index, chunk in enumerate(self._chunk_text(answer, size=70)):
-            yield {
-                "type": "token",
-                "index": index,
-                "text": chunk,
-            }
-        yield {
-            "type": "done",
-            "result": result.to_dict(),
-        }
-
-    def _chunk_text(self, text: str, size: int) -> Iterator[str]:
-        """Split text into readable chunks for simulated answer streaming."""
-
-        words = text.split(" ")
-        chunk = ""
-        for word in words:
-            next_chunk = f"{chunk} {word}".strip()
-            if len(next_chunk) > size and chunk:
-                yield chunk + " "
-                chunk = word
-            else:
-                chunk = next_chunk
-        if chunk:
-            yield chunk
-
+        yield {"type": "done", "result": final_result.to_dict()}

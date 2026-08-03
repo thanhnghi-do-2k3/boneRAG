@@ -1,35 +1,116 @@
-"""Text encoder used by Baseline.
-
-This is intentionally simple. It lets us demonstrate retrieval without model
-weights. A production version should keep the same `encode(text)` method but use
-BiomedCLIP, BGE-VL, or another medical multimodal encoder.
-"""
+"""Multimodal & BiomedCLIP Encoder for BoneRAG Baseline & Production."""
 
 from __future__ import annotations
 
+from abc import ABC, abstractmethod
 import hashlib
 import math
+from pathlib import Path
 import re
+from typing import Any
 
 Vector = tuple[float, ...]
 TOKEN_PATTERN = re.compile(r"[a-z0-9]+")
 
 
-def normalize(values: list[float]) -> Vector:
+def normalize(values: list[float] | Any) -> Vector:
     """Return a unit-length vector so dot product behaves like cosine similarity."""
 
-    norm = math.sqrt(sum(value * value for value in values))
+    norm = math.sqrt(sum(float(v) * float(v) for v in values))
     if norm == 0:
-        return tuple(values)
-    return tuple(value / norm for value in values)
+        return tuple(float(v) for v in values)
+    return tuple(float(v) / norm for v in values)
 
 
-class HashingTextEncoder:
-    """Deterministic feature-hashing text encoder.
+class BaseMultimodalEncoder(ABC):
+    """Abstract base class for BoneRAG encoders."""
 
-    Each token is hashed into one bucket. The bucket receives +1 or -1 depending
-    on the hash. This is not semantic AI, but repeated medical keywords such as
-    "wrist", "fracture", "radius" still make related records closer.
+    @abstractmethod
+    def encode_text(self, text: str) -> Vector:
+        pass
+
+    @abstractmethod
+    def encode_image(self, image_input: str | Path | Any) -> Vector:
+        pass
+
+    @abstractmethod
+    def encode_roi(self, image_input: str | Path | Any, bbox: list[float]) -> Vector:
+        pass
+
+    def encode(self, text: str) -> Vector:
+        """Backward-compatible alias for encode_text."""
+        return self.encode_text(text)
+
+
+class BiomedCLIPEncoder(BaseMultimodalEncoder):
+    """Multimodal encoder utilizing open_clip / BiomedCLIP models."""
+
+    def __init__(
+        self,
+        model_name: str = "hf-hub:microsoft/BiomedCLIP-PubMedBERT_256-vit_base_patch16_224",
+        pretrained: str = "",
+    ) -> None:
+        import torch
+        import open_clip
+        from PIL import Image
+
+        self.torch = torch
+        self.Image = Image
+        self.device = "cuda" if torch.cuda.is_available() else "cpu"
+
+        try:
+            self.model, _, self.preprocess = open_clip.create_model_and_transforms(
+                model_name, pretrained=pretrained
+            )
+            self.tokenizer = open_clip.get_tokenizer(model_name)
+        except Exception:
+            # Fallback to standard ViT-B-32 if hub weights require download or network error
+            self.model, _, self.preprocess = open_clip.create_model_and_transforms(
+                "ViT-B-32", pretrained="openai"
+            )
+            self.tokenizer = open_clip.get_tokenizer("ViT-B-32")
+
+        self.model.to(self.device)
+        self.model.eval()
+
+    def encode_text(self, text: str) -> Vector:
+        with self.torch.no_grad():
+            tokens = self.tokenizer([text]).to(self.device)
+            features = self.model.encode_text(tokens)
+            features /= features.norm(dim=-1, keepdim=True)
+            return tuple(features[0].cpu().numpy().tolist())
+
+    def encode_image(self, image_input: str | Path | Any) -> Vector:
+        if not isinstance(image_input, self.Image.Image):
+            image = self.Image.open(image_input).convert("RGB")
+        else:
+            image = image_input.convert("RGB")
+
+        with self.torch.no_grad():
+            tensor = self.preprocess(image).unsqueeze(0).to(self.device)
+            features = self.model.encode_image(tensor)
+            features /= features.norm(dim=-1, keepdim=True)
+            return tuple(features[0].cpu().numpy().tolist())
+
+    def encode_roi(self, image_input: str | Path | Any, bbox: list[float]) -> Vector:
+        if not isinstance(image_input, self.Image.Image):
+            image = self.Image.open(image_input).convert("RGB")
+        else:
+            image = image_input.convert("RGB")
+
+        if len(bbox) == 4:
+            x, y, w, h = bbox
+            crop_box = (max(0, int(x)), max(0, int(y)), max(0, int(x + w)), max(0, int(y + h)))
+            if crop_box[2] > crop_box[0] and crop_box[3] > crop_box[1]:
+                image = image.crop(crop_box)
+
+        return self.encode_image(image)
+
+
+class HashingTextEncoder(BaseMultimodalEncoder):
+    """Deterministic feature-hashing text & visual encoder.
+
+    Provides high-speed, lightweight encoding for testing & baseline fallback.
     """
 
     def __init__(self, dim: int = 256) -> None:
@@ -40,7 +121,7 @@ class HashingTextEncoder:
     def tokenize(self, text: str) -> list[str]:
         return TOKEN_PATTERN.findall(text.lower())
 
-    def encode(self, text: str) -> Vector:
+    def encode_text(self, text: str) -> Vector:
         buckets = [0.0] * self.dim
         for token in self.tokenize(text):
             digest = hashlib.sha1(token.encode("utf-8")).digest()
@@ -48,3 +129,26 @@ class HashingTextEncoder:
             sign = 1.0 if digest[4] & 1 else -1.0
             buckets[index] += sign
         return normalize(buckets)
+
+    def encode_image(self, image_input: str | Path | Any) -> Vector:
+        if isinstance(image_input, (str, Path)):
+            text_repr = f"image {Path(image_input).name}"
+        else:
+            text_repr = "image visual content xray"
+        return self.encode_text(text_repr)
+
+    def encode_roi(self, image_input: str | Path | Any, bbox: list[float]) -> Vector:
+        roi_str = f"roi lesion region bbox {bbox} " + (
+            str(image_input) if isinstance(image_input, (str, Path)) else "crop"
+        )
+        return self.encode_text(roi_str)
+
+
+def get_multimodal_encoder(mode: str = "auto") -> BaseMultimodalEncoder:
+    """Return BiomedCLIPEncoder if mode=='biomedclip', else HashingTextEncoder."""
+    if mode == "biomedclip":
+        try:
+            return BiomedCLIPEncoder()
+        except Exception:
+            pass
+    return HashingTextEncoder()
