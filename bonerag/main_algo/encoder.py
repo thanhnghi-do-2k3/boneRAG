@@ -93,6 +93,7 @@ class BiomedCLIPEncoder(BaseMultimodalEncoder):
 
         self.model.to(self.device)
         self.model.eval()
+        self.dim = getattr(getattr(self.model, "visual", None), "output_dim", 512)
 
     def encode_text(self, text: str) -> Vector:
         with self.torch.no_grad():
