@@ -45,7 +45,7 @@ export function QuestionScreen({
           </div>
         </div>
         <div className="topbar-model-selector">
-          <ModelSelector />
+          <ModelSelector variant="topbar" />
         </div>
       </header>
 

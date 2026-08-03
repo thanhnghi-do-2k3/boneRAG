@@ -35,7 +35,7 @@ export function Sidebar({ open, activeScreen, stats, onClose, onScreenChange, on
       </nav>
 
       <div className="side-model-selector">
-        <ModelSelector />
+        <ModelSelector variant="sidebar" />
       </div>
 
       <div className="side-actions">

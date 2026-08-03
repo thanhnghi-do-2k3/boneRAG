@@ -1,9 +1,10 @@
 import { useState, useEffect } from 'react';
+import { createPortal } from 'react-dom';
 import { fetchModelConfigs, setModelConfig } from '../services/boneragApi';
 
 const GEMINI_MODELS = ['gemini-1.5-flash', 'gemini-1.5-pro', 'gemini-2.0-flash'];
 
-export function ModelSelector({ onConfigChange }) {
+export function ModelSelector({ onConfigChange, variant = 'sidebar' }) {
   const [configs, setConfigs] = useState(null);
   const [active, setActive] = useState(null);
   const [geminiKey, setGeminiKey] = useState('');
@@ -44,110 +45,153 @@ export function ModelSelector({ onConfigChange }) {
     }
   };
 
+  const isSidebar = variant === 'sidebar';
+
   if (!configs || !active) {
-    return (
-      <div className="model-selector-wrapper">
-        <button className="model-badge-btn" disabled title="Đang kết nối tải cấu hình Foundation Model từ máy chủ...">
-          <span className="model-badge-enc">⚙️ Foundation Model: Đang tải...</span>
+    if (isSidebar) {
+      return (
+        <button className="sidebar-model-btn loading" disabled title="Đang kết nối tải cấu hình...">
+          <div className="sidebar-model-icon-box">⏳</div>
+          <div className="sidebar-model-text">
+            <span className="sidebar-model-title">Model Pipeline</span>
+            <span className="sidebar-model-val" style={{ color: 'var(--muted)' }}>Đang tải...</span>
+          </div>
         </button>
-      </div>
+      );
+    }
+    return (
+      <button className="topbar-model-btn loading" disabled title="Đang kết nối tải cấu hình...">
+        <span className="topbar-model-icon">⏳</span>
+        <span>Đang kết nối tải Foundation Model...</span>
+      </button>
     );
   }
 
   const encoderName = configs.encoders?.[active.encoder]?.label || active.encoder;
   const generatorName = configs.generators?.[active.generator]?.label || active.generator;
+  const shortEnc = encoderName.split(' ')[0];
+  const shortGen = generatorName.split(' ')[0];
 
   return (
-    <div className="model-selector-wrapper">
-      <button
-        className="model-badge-btn prominent-badge"
-        onClick={() => setOpen((o) => !o)}
-        title="Bấm để thiết lập Foundation Model (BiomedCLIP, CLIP, Gemini...)"
-      >
-        <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-          <circle cx="12" cy="12" r="3" />
-          <path d="M19.07 4.93a10 10 0 0 1 0 14.14M4.93 4.93a10 10 0 0 0 0 14.14" />
-        </svg>
-        <span className="model-badge-label">🎛️ Foundation Model:</span>
-        <span className="model-badge-enc">{encoderName.split(' ')[0]}</span>
-        <span className="model-badge-sep">|</span>
-        <span className="model-badge-gen">Gen: {generatorName.split(' ')[0]}</span>
-        <span className="model-badge-caret">▾</span>
-      </button>
-
-      {open && (
-        <div className="model-selector-panel">
-          <div className="model-selector-header">
-            <div>
-              <h4>🎛️ Cấu hình Foundation Model</h4>
-              <p className="model-subhint">Chọn mô hình thị giác & sinh từ cho pipeline BoneRAG</p>
-            </div>
-            <button className="model-selector-close" onClick={() => setOpen(false)}>✕</button>
+    <>
+      {isSidebar ? (
+        <button
+          className="sidebar-model-btn"
+          onClick={() => setOpen(true)}
+          title="Bấm để đổi cấu hình Foundation Model & Generator"
+        >
+          <div className="sidebar-model-icon-box">🎛️</div>
+          <div className="sidebar-model-text">
+            <span className="sidebar-model-title">Foundation Model</span>
+            <span className="sidebar-model-val">{shortEnc} + {shortGen}</span>
           </div>
-
-          <label className="model-field-label">Vision-Language Encoder (Mã hóa đa phương thức)</label>
-          <select
-            className="model-select"
-            value={active.encoder}
-            onChange={(e) => setActive({ ...active, encoder: e.target.value })}
-          >
-            {Object.entries(configs.encoders || {}).map(([key, info]) => (
-              <option key={key} value={key}>
-                {info.label}{info.requires_download ? ' ⬇' : ''}
-              </option>
-            ))}
-          </select>
-
-          <label className="model-field-label">Generator (Sinh câu trả lời)</label>
-          <select
-            className="model-select"
-            value={active.generator}
-            onChange={(e) => setActive({ ...active, generator: e.target.value })}
-          >
-            {Object.entries(configs.generators || {}).map(([key, info]) => (
-              <option key={key} value={key}>{info.label}</option>
-            ))}
-          </select>
-
-          {active.generator === 'gemini' && (
-            <>
-              <label className="model-field-label">Gemini Model</label>
-              <select
-                className="model-select"
-                value={geminiModel}
-                onChange={(e) => setGeminiModel(e.target.value)}
-              >
-                {GEMINI_MODELS.map((m) => (
-                  <option key={m} value={m}>{m}</option>
-                ))}
-              </select>
-
-              <label className="model-field-label">
-                Gemini API Key
-                <span className="model-field-hint"> (lưu trong RAM, không gửi về server log)</span>
-              </label>
-              <input
-                className="model-key-input"
-                type="password"
-                placeholder="AIzaSy..."
-                value={geminiKey}
-                onChange={(e) => setGeminiKey(e.target.value)}
-                autoComplete="off"
-              />
-            </>
-          )}
-
-          <div className="model-selector-footer">
-            <button
-              className={`model-save-btn ${saved ? 'saved' : ''}`}
-              onClick={handleSave}
-              disabled={saving}
-            >
-              {saving ? 'Đang lưu...' : saved ? '✓ Đã lưu' : 'Áp dụng'}
-            </button>
-          </div>
-        </div>
+          <span className="sidebar-model-arrow" title="Cài đặt">⚙️</span>
+        </button>
+      ) : (
+        <button
+          className="topbar-model-btn"
+          onClick={() => setOpen(true)}
+          title="Bấm để thiết lập Foundation Model (BiomedCLIP, CLIP, Gemini...)"
+        >
+          <span className="topbar-model-icon">🎛️</span>
+          <span className="topbar-model-label">Foundation Model:</span>
+          <span className="topbar-model-enc">{shortEnc}</span>
+          <span className="topbar-model-sep">|</span>
+          <span className="topbar-model-label">Gen:</span>
+          <span className="topbar-model-gen">{shortGen}</span>
+          <span className="topbar-model-action">⚙️ Đổi</span>
+        </button>
       )}
-    </div>
+
+      {open && createPortal(
+        <div className="config-modal-backdrop" onClick={(e) => { if (e.target.className === 'config-modal-backdrop') setOpen(false); }}>
+          <article className="config-modal-content" role="dialog" aria-modal="true">
+            <div className="config-modal-header">
+              <div>
+                <p className="eyebrow" style={{ margin: 0 }}>BoneRAG Pipeline Settings</p>
+                <h3>🎛️ Cấu hình Foundation Model & Generator</h3>
+                <p className="config-subhint">Thiết lập mô hình thị giác y khoa SOTA và mô hình sinh ngữ cảnh cho RAG</p>
+              </div>
+              <button className="config-modal-close" onClick={() => setOpen(false)} aria-label="Đóng bảng cấu hình">✕</button>
+            </div>
+
+            <div className="config-modal-body">
+              <div className="config-group">
+                <label className="config-field-label">Vision-Language Encoder (Mã hóa đa phương thức)</label>
+                <select
+                  className="config-select"
+                  value={active.encoder}
+                  onChange={(e) => setActive({ ...active, encoder: e.target.value })}
+                >
+                  {Object.entries(configs.encoders || {}).map(([key, info]) => (
+                    <option key={key} value={key}>
+                      {info.label}{info.requires_download ? ' (⬇ Tải xuống trọng số tự động)' : ''}
+                    </option>
+                  ))}
+                </select>
+                {configs.encoders?.[active.encoder]?.description && (
+                  <p className="config-field-desc">💡 {configs.encoders[active.encoder].description}</p>
+                )}
+              </div>
+
+              <div className="config-group">
+                <label className="config-field-label">Generator (Mô hình sinh câu trả lời)</label>
+                <select
+                  className="config-select"
+                  value={active.generator}
+                  onChange={(e) => setActive({ ...active, generator: e.target.value })}
+                >
+                  {Object.entries(configs.generators || {}).map(([key, info]) => (
+                    <option key={key} value={key}>{info.label}</option>
+                  ))}
+                </select>
+                {configs.generators?.[active.generator]?.description && (
+                  <p className="config-field-desc">💡 {configs.generators[active.generator].description}</p>
+                )}
+              </div>
+
+              {active.generator === 'gemini' && (
+                <div className="config-group gemini-group">
+                  <label className="config-field-label">Phiên bản Gemini Model</label>
+                  <select
+                    className="config-select"
+                    value={geminiModel}
+                    onChange={(e) => setGeminiModel(e.target.value)}
+                  >
+                    {GEMINI_MODELS.map((m) => (
+                      <option key={m} value={m}>{m}</option>
+                    ))}
+                  </select>
+
+                  <label className="config-field-label" style={{ marginTop: '10px' }}>
+                    Gemini API Key
+                    <span className="config-field-hint"> (Chỉ lưu trong RAM, bảo mật tuyệt đối)</span>
+                  </label>
+                  <input
+                    className="config-key-input"
+                    type="password"
+                    placeholder="Dán mã AIzaSy... tại đây"
+                    value={geminiKey}
+                    onChange={(e) => setGeminiKey(e.target.value)}
+                    autoComplete="off"
+                  />
+                </div>
+              )}
+            </div>
+
+            <div className="config-modal-footer">
+              <button
+                className={`config-save-btn ${saved ? 'saved' : ''}`}
+                onClick={() => { handleSave(); setTimeout(() => setOpen(false), 700); }}
+                disabled={saving}
+              >
+                {saving ? '⏳ Đang lưu & khởi tạo...' : saved ? '✓ Đã cập nhật!' : '💾 Lưu cấu hình & Áp dụng'}
+              </button>
+            </div>
+          </article>
+        </div>,
+        document.body
+      )}
+    </>
   );
 }
