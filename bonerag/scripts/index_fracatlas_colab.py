@@ -36,13 +36,18 @@ tokenizer = open_clip.get_tokenizer("hf-hub:microsoft/BiomedCLIP-PubMedBERT_256-
 model.to(device)
 model.eval()
 
-# Step 3: Download FracAtlas Dataset (or sample subset)
-DATASET_DIR = Path("./fracatlas_dataset")
-DATASET_DIR.mkdir(exist_ok=True)
-
+# Step 3: Download FracAtlas Dataset
 print("[3/5] Downloading FracAtlas Dataset...")
-# Clone FracAtlas images or download zip from Kaggle / GitHub
-os.system("git clone --depth 1 https://github.com/huyen-nguyen/FracAtlas.git ./fracatlas_repo || true")
+# Method 1: Public GitHub repository
+os.system("git clone --depth 1 https://github.com/XLR8-07/FracAtlas.git ./fracatlas_repo || true")
+
+image_files = list(Path("./fracatlas_repo").rglob("*.jpg")) + list(Path("./fracatlas_repo").rglob("*.png"))
+# Method 2: Figshare direct zip download fallback
+if not image_files:
+    print("Downloading direct zip from Figshare...")
+    os.system("wget -q -O FracAtlas.zip 'https://figshare.com/ndownloader/articles/22276042/versions/1' || curl -L -o FracAtlas.zip 'https://figshare.com/ndownloader/articles/22276042/versions/1'")
+    os.system("unzip -q -o FracAtlas.zip -d ./fracatlas_repo || true")
+    image_files = list(Path("./fracatlas_repo").rglob("*.jpg")) + list(Path("./fracatlas_repo").rglob("*.png"))
 
 # Step 4: Encode Dataset Images & Text with BiomedCLIP
 print("[4/5] Encoding FracAtlas images & metadata on GPU...")
