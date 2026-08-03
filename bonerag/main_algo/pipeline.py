@@ -133,7 +133,13 @@ class BoneRAGPipeline:
 
         if not hits:
             return False
-        question_tokens = set(self.encoder.tokenize(question)) if hasattr(self.encoder, "tokenize") else set(question.lower().split())
+        
+        # If image context is present in pipeline question, always retrieve evidence
+        lower_q = question.lower()
+        if "selected image context:" in lower_q or "image_id:" in lower_q:
+            return True
+
+        question_tokens = set(self.encoder.tokenize(question)) if hasattr(self.encoder, "tokenize") else set(lower_q.split())
         medical_terms = {
             "xray",
             "x",
@@ -149,6 +155,19 @@ class BoneRAGPipeline:
             "radius",
             "lesion",
             "tumor",
+            "bệnh",
+            "ảnh",
+            "bị",
+            "gì",
+            "thế",
+            "chẩn",
+            "đoán",
+            "tổn",
+            "thương",
+            "vùng",
+            "khớp",
+            "xem",
+            "này",
         }
         return bool(question_tokens & medical_terms) and hits[0].score >= self.min_similarity
 
@@ -259,8 +278,25 @@ class BoneRAGPipeline:
                 "stage": "gating-check",
                 "message": "Cổng từ chối: câu hỏi không liên quan đến bằng chứng X-quang.",
             }
-            result = self.answer(question)
-            yield {"type": "done", "result": result.to_dict()}
+            refusal_answer = self.generate_answer(question, [], used_retrieval=False)
+            chunk_size = 18
+            for index in range(0, len(refusal_answer), chunk_size):
+                yield {"type": "token", "text": refusal_answer[index : index + chunk_size]}
+
+            final_result = PipelineResult(
+                question=question,
+                used_retrieval=False,
+                answer=refusal_answer,
+                evidence=[],
+                debug={
+                    "encoder_type": self.encoder.__class__.__name__,
+                    "index_type": self.index.__class__.__name__,
+                    "raw_hits": [asdict(hit) for hit in hits],
+                    "top_hit_score": hits[0].score if hits else 0.0,
+                    "evidence_count": 0,
+                },
+            )
+            yield {"type": "done", "result": final_result.to_dict()}
             return
 
         yield {

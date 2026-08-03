@@ -95,11 +95,17 @@ export function App() {
       }
 
       if (payload.type === 'done') {
+        const rawAnswer = payload.result?.answer ?? '';
+        const cleanAnswer = rawAnswer.startsWith(`Câu hỏi: ${pipelineQuestion}`)
+          ? rawAnswer.replace(`Câu hỏi: ${pipelineQuestion}`, `Câu hỏi: ${trimmed}`)
+          : rawAnswer;
+
         const displayResult = {
           ...payload.result,
           question: trimmed,
-          answer: payload.result.answer.replace(`Câu hỏi: ${pipelineQuestion}`, `Câu hỏi: ${trimmed}`),
+          answer: cleanAnswer,
         };
+
         const finalAssistantMessage = {
           ...assistantMessage,
           text: displayResult.answer,
