@@ -66,19 +66,60 @@ class BoneRAGPipeline:
         generator: BaseGenerator | None = None,
         top_k: int = 4,
         min_similarity: float = 0.02,
+        index_path: Path | str | None = None,
+        metadata_path: Path | str | None = None,
     ) -> None:
-        self.records = records or SAMPLE_RECORDS
-        self.record_by_id = {record.image_id: record for record in self.records}
+        self.index_path = Path(index_path) if index_path else None
+        self.metadata_path = Path(metadata_path) if metadata_path else None
         self.encoder = encoder or get_multimodal_encoder(mode="biomedclip")
         self.generator = generator or TemplateGenerator()
         self.top_k = top_k
         self.min_similarity = min_similarity
+
+        # Load custom dataset metadata if provided
+        if self.metadata_path and self.metadata_path.exists():
+            import json
+            with self.metadata_path.open("r", encoding="utf-8") as fh:
+                meta_list = json.load(fh)
+            loaded_records = []
+            for item in meta_list:
+                loaded_records.append(
+                    ImageRecord(
+                        image_id=item.get("image_id", ""),
+                        title=item.get("title", ""),
+                        body_part=item.get("body_part", "unknown"),
+                        diagnosis=item.get("diagnosis", "unknown"),
+                        fracture_type=item.get("fracture_type", "unknown"),
+                        region=item.get("region", "unknown"),
+                        evidence_note=item.get("evidence_note", ""),
+                        text=item.get("text", ""),
+                        image_path=item.get("image_path"),
+                    )
+                )
+            self.records = loaded_records
+        else:
+            self.records = records or SAMPLE_RECORDS
+
+        self.record_by_id = {record.image_id: record for record in self.records}
         self.index = self._build_index()
 
     def _build_index(self) -> InMemoryVectorIndex | FAISSVectorIndex:
-        """Off-line phase: multi-level indexing (Text Metadata + Full Image + ROI Crops)."""
+        """Off-line phase: multi-level indexing or load pre-computed .faiss file."""
 
-        dim = getattr(self.encoder, "dim", 256)
+        dim = getattr(self.encoder, "dim", 512)
+
+        # 1. Fast load from pre-computed FAISS index file on disk (<0.02s)
+        if self.index_path and self.index_path.exists():
+            try:
+                from .vector_index import FAISSVectorIndex
+                idx = FAISSVectorIndex(dim=dim)
+                id_list = [r.image_id for r in self.records]
+                idx.load_from_file(self.index_path, id_list)
+                return idx
+            except Exception as exc:
+                print(f"[pipeline] Load index warning: {exc}, building in-memory...")
+
+        # 2. Build on-the-fly if no pre-computed index file exists
         index = get_vector_index(dim=dim)
         for record in self.records:
             # 1. Text metadata vector
