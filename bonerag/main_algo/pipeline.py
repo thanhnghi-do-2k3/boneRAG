@@ -69,7 +69,7 @@ class BoneRAGPipeline:
     ) -> None:
         self.records = records or SAMPLE_RECORDS
         self.record_by_id = {record.image_id: record for record in self.records}
-        self.encoder = encoder or get_multimodal_encoder(mode="auto")
+        self.encoder = encoder or get_multimodal_encoder(mode="biomedclip")
         self.generator = generator or TemplateGenerator()
         self.top_k = top_k
         self.min_similarity = min_similarity

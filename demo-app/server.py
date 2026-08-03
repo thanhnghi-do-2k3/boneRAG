@@ -45,7 +45,7 @@ FRONTEND_DIST = ROOT / "frontend" / "dist"
 
 _PIPELINE_CACHE: dict[str, BoneRAGPipeline] = {}
 _ACTIVE_CONFIG: dict = {
-    "encoder": "hashing",
+    "encoder": "biomedclip",
     "generator": "template",
     "gemini_api_key": "",
     "gemini_model": "gemini-1.5-flash",
@@ -405,8 +405,8 @@ def main() -> None:
     parser.add_argument("--port", type=int, default=8088)
     parser.add_argument(
         "--encoder",
-        default="hashing",
-        choices=["hashing", "biomedclip", "clip"],
+        default="biomedclip",
+        choices=["biomedclip", "clip"],
         help="Default encoder on startup",
     )
     parser.add_argument(

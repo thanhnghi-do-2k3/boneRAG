@@ -175,37 +175,37 @@ class HashingTextEncoder(BaseMultimodalEncoder):
         return self.encode_text("pasted xray bone image grayscale fracture")
 
 
-def get_multimodal_encoder(mode: str = "auto") -> BaseMultimodalEncoder:
-    """Return BiomedCLIPEncoder if mode=='biomedclip', else HashingTextEncoder."""
-    if mode == "biomedclip":
+def get_multimodal_encoder(mode: str = "biomedclip") -> BaseMultimodalEncoder:
+    """Return BiomedCLIPEncoder or CLIPViTB32Encoder as default foundation models."""
+    if mode in ("auto", "biomedclip"):
         try:
             return BiomedCLIPEncoder()
-        except Exception:
-            pass
+        except Exception as exc:
+            print(f"[encoder] BiomedCLIP init warning: {exc}, falling back to OpenAI CLIP ViT-B/32")
     if mode == "clip":
         try:
             return BiomedCLIPEncoder(model_name="ViT-B-32", pretrained="openai")
         except Exception:
             pass
-    return HashingTextEncoder()
+    # Fallback to standard OpenAI CLIP if BiomedCLIP hub download fails
+    try:
+        return BiomedCLIPEncoder(model_name="ViT-B-32", pretrained="openai")
+    except Exception:
+        return HashingTextEncoder()
 
 
 AVAILABLE_ENCODERS = {
-    "hashing": {
-        "label": "Hashing Encoder (Baseline)",
-        "description": "Lightweight deterministic feature-hashing. No dependencies, instant startup.",
-        "requires_download": False,
-    },
     "biomedclip": {
         "label": "BiomedCLIP (Microsoft)",
-        "description": "Biomedical CLIP from PubMed literature. Best for medical image understanding.",
+        "description": "Biomedical CLIP (PubMedBERT + ViT-B/16). Purpose-built for medical VQA & X-ray RAG.",
         "requires_download": True,
         "download_size_mb": 400,
     },
     "clip": {
         "label": "CLIP ViT-B/32 (OpenAI)",
-        "description": "General-purpose CLIP vision encoder. Lighter than BiomedCLIP.",
+        "description": "OpenAI general-purpose vision-language CLIP model.",
         "requires_download": True,
         "download_size_mb": 350,
     },
 }
+
