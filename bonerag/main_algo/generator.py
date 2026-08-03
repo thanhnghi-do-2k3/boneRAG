@@ -140,34 +140,44 @@ class LocalHuggingFaceGenerator(BaseGenerator):
             from transformers import AutoModelForCausalLM, AutoTokenizer
             self._tokenizer = AutoTokenizer.from_pretrained(self.model_name)
             device = "cuda" if torch.cuda.is_available() else "mps" if torch.backends.mps.is_available() else "cpu"
+            dtype = torch.float16 if device == "cuda" else torch.bfloat16 if device == "mps" else torch.float32
             self._model = AutoModelForCausalLM.from_pretrained(
                 self.model_name,
-                torch_dtype=torch.float16 if device != "cpu" else torch.float32,
+                torch_dtype=dtype,
+                low_cpu_mem_usage=True,
             )
             self._model.to(device)
+            self._model.eval()
         return self._tokenizer, self._model
 
-    def generate(self, question: str, evidence: list["Evidence"], used_retrieval: bool) -> str:
+    def generate_stream(self, question: str, evidence: list["Evidence"], used_retrieval: bool):
+        """Stream generated tokens live as they are produced by the neural network."""
         prompt = _build_rag_prompt(question, evidence, used_retrieval)
         try:
+            import threading
+            from transformers import TextIteratorStreamer
             tokenizer, model = self._get_model_and_tokenizer()
             messages = [
                 {"role": "system", "content": _SYSTEM_PROMPT},
                 {"role": "user", "content": prompt},
             ]
             text = tokenizer.apply_chat_template(messages, tokenize=False, add_generation_prompt=True)
-            model_inputs = tokenizer([text], return_tensors="pt").to(model.device)
-            generated_ids = model.generate(**model_inputs, max_new_tokens=400, temperature=0.3)
-            generated_ids = [
-                output_ids[len(input_ids):] for input_ids, output_ids in zip(model_inputs.input_ids, generated_ids)
-            ]
-            response = tokenizer.batch_decode(generated_ids, skip_special_tokens=True)[0]
-            return response.strip()
+            inputs = tokenizer([text], return_tensors="pt").to(model.device)
+            streamer = TextIteratorStreamer(tokenizer, skip_prompt=True, skip_special_tokens=True)
+            generation_kwargs = dict(**inputs, streamer=streamer, max_new_tokens=180, do_sample=False)
+            thread = threading.Thread(target=model.generate, kwargs=generation_kwargs)
+            thread.start()
+            for token in streamer:
+                yield token
+            thread.join()
         except Exception as exc:
-            return (
-                f"⚠️ **[Local SLM Note]** Không thể nạp weights `{self.model_name}` ({exc}).\n\n"
-                + LocalRAGSynthesizer().generate(question, evidence, used_retrieval)
-            )
+            text = LocalRAGSynthesizer().generate(question, evidence, used_retrieval)
+            for chunk in text.split(" "):
+                yield chunk + " "
+
+    def generate(self, question: str, evidence: list["Evidence"], used_retrieval: bool) -> str:
+        tokens = list(self.generate_stream(question, evidence, used_retrieval))
+        return "".join(tokens).strip()
 
     @property
     def name(self) -> str:

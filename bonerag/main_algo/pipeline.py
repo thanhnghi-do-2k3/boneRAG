@@ -417,10 +417,17 @@ class BoneRAGPipeline:
             "message": f"Đã rerank {len(evidence)} bằng chứng theo vùng cơ thể & nhãn gãy",
         }
 
-        full_answer = self.generate_answer(question, evidence, used_retrieval=True)
-        chunk_size = 18
-        for index in range(0, len(full_answer), chunk_size):
-            yield {"type": "token", "text": full_answer[index : index + chunk_size]}
+        if hasattr(self.generator, "generate_stream"):
+            token_list = []
+            for token in self.generator.generate_stream(question, evidence, used_retrieval=True):
+                token_list.append(token)
+                yield {"type": "token", "text": token}
+            full_answer = "".join(token_list)
+        else:
+            full_answer = self.generate_answer(question, evidence, used_retrieval=True)
+            chunk_size = 18
+            for index in range(0, len(full_answer), chunk_size):
+                yield {"type": "token", "text": full_answer[index : index + chunk_size]}
 
         final_result = PipelineResult(
             question=question,
