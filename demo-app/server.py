@@ -40,6 +40,62 @@ ROOT = Path(__file__).resolve().parent
 WEB_ROOT = ROOT / "web"
 FRONTEND_DIST = ROOT / "frontend" / "dist"
 
+AVAILABLE_ENCODERS = {
+    "biomedclip": {
+        "label": "BiomedCLIP (Microsoft)",
+        "description": "Biomedical CLIP (PubMedBERT + ViT-B/16). Purpose-built for medical VQA & X-ray RAG.",
+        "requires_download": True,
+        "download_size_mb": 400,
+    },
+    "clip_vit_b32": {
+        "label": "CLIP ViT-B/32 (OpenAI)",
+        "description": "OpenAI general-purpose vision-language CLIP model.",
+        "requires_download": True,
+        "download_size_mb": 350,
+    },
+    "clip_vit_l14": {
+        "label": "CLIP ViT-L/14 (OpenAI)",
+        "description": "OpenAI high-resolution Vision-Language model (768-dim embeddings).",
+        "requires_download": True,
+        "download_size_mb": 850,
+    },
+    "resnet_text": {
+        "label": "ResNet50 + Medical Embedder",
+        "description": "ResNet50 visual backbone with text vectorizer baseline.",
+        "requires_download": True,
+        "download_size_mb": 200,
+    },
+}
+
+AVAILABLE_GENERATORS = {
+    "medical_llm": {
+        "label": "BoneRAG Medical AI (Chuyên gia Y khoa SOTA)",
+        "description": "Mô hình lập luận y khoa chuyên sâu. Tự động sinh phân tích lâm sàng tự nhiên không cần API key.",
+        "requires_key": False,
+    },
+    "gemini": {
+        "label": "Google Gemini (Multimodal SOTA LLM)",
+        "description": "Mô hình trí tuệ nhân tạo Gemini 1.5/2.0 của Google.",
+        "requires_key": True,
+        "key_name": "GEMINI_API_KEY",
+        "models": ["gemini-1.5-flash", "gemini-1.5-pro", "gemini-2.0-flash"],
+        "default_model": "gemini-1.5-flash",
+    },
+    "openai": {
+        "label": "OpenAI / Groq / OpenRouter LLM",
+        "description": "Tích hợp các mô hình GPT-4o, Llama-3.3, Qwen2-VL qua API.",
+        "requires_key": True,
+        "key_name": "OPENAI_API_KEY",
+        "models": ["gpt-4o-mini", "gpt-4o", "llama-3.3-70b", "qwen-2.5-72b"],
+        "default_model": "gpt-4o-mini",
+    },
+    "template": {
+        "label": "Template Baseline (Mẫu quy tắc cơ bản)",
+        "description": "Mẫu câu trả lời quy tắc cơ bản (Baseline).",
+        "requires_key": False,
+    },
+}
+
 # ---------------------------------------------------------------------------
 # Global state — pipeline cache + session logger
 # ---------------------------------------------------------------------------
@@ -319,7 +375,6 @@ class BoneRAGHandler(BaseHTTPRequestHandler):
             return
 
         if route == "/api/model-configs":
-            from main_algo.encoder import AVAILABLE_ENCODERS  # type: ignore[attr-defined]
             self._send_json({
                 "active": _ACTIVE_CONFIG,
                 "encoders": AVAILABLE_ENCODERS,

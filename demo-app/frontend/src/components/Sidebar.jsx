@@ -34,10 +34,6 @@ export function Sidebar({ open, activeScreen, stats, onClose, onScreenChange, on
         ))}
       </nav>
 
-      <div className="side-model-selector">
-        <ModelSelector variant="sidebar" />
-      </div>
-
       <div className="side-actions">
         <Button className="theme-toggle" onClick={onExport}>
           Export chat

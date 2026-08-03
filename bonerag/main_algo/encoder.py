@@ -132,9 +132,13 @@ class BiomedCLIPEncoder(BaseMultimodalEncoder):
 
 
 def get_multimodal_encoder(mode: str = "biomedclip") -> BaseMultimodalEncoder:
-    """Return BiomedCLIPEncoder or CLIPViTB32Encoder as deep research foundation models."""
-    if mode == "clip":
+    """Return BiomedCLIPEncoder, CLIPViTB32Encoder, CLIPViTL14Encoder, or ResNetEncoder."""
+    if mode in ("clip", "clip_vit_b32"):
         return BiomedCLIPEncoder(model_name="ViT-B-32", pretrained="openai")
+    if mode == "clip_vit_l14":
+        return BiomedCLIPEncoder(model_name="ViT-L-14", pretrained="openai")
+    if mode in ("resnet", "resnet_text"):
+        return BiomedCLIPEncoder(model_name="RN50", pretrained="openai")
 
     # Default to BiomedCLIP (PubMedBERT + ViT-B/16)
     try:
@@ -151,11 +155,23 @@ AVAILABLE_ENCODERS = {
         "requires_download": True,
         "download_size_mb": 400,
     },
-    "clip": {
+    "clip_vit_b32": {
         "label": "CLIP ViT-B/32 (OpenAI)",
         "description": "OpenAI general-purpose vision-language CLIP model.",
         "requires_download": True,
         "download_size_mb": 350,
+    },
+    "clip_vit_l14": {
+        "label": "CLIP ViT-L/14 (OpenAI)",
+        "description": "OpenAI high-resolution Vision-Language model (768-dim embeddings).",
+        "requires_download": True,
+        "download_size_mb": 850,
+    },
+    "resnet_text": {
+        "label": "ResNet50 + Medical Embedder",
+        "description": "ResNet50 visual backbone with text vectorizer baseline.",
+        "requires_download": True,
+        "download_size_mb": 200,
     },
 }
 
