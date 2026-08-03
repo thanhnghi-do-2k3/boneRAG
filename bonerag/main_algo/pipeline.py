@@ -252,6 +252,10 @@ class BoneRAGPipeline:
             },
         )
 
+    def answer_events(self, question: str) -> Iterator[dict[str, object]]:
+        """Alias for stream_answer used by HTTP server."""
+        return self.stream_answer(question)
+
     def stream_answer(self, question: str) -> Iterator[dict[str, object]]:
         """Simulate an online response stream over Server-Sent Events."""
 
