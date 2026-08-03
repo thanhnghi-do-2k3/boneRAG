@@ -1,10 +1,8 @@
 """Generator layer for BoneRAG pipeline.
 
-Supports multiple answer generation backends:
-- MedicalReasoningGenerator: Natural language medical AI reasoning & clinical synthesis (Default)
-- GeminiGenerator: Google Gemini API (Multimodal SOTA LLM)
-- OpenAIGenerator: OpenAI / Groq / OpenRouter / Ollama API
-- TemplateGenerator: Deterministic rule-based baseline (Legacy)
+Focuses exclusively on Local Small-Parameter Foundation Models (Local SLMs) and pure RAG context synthesis.
+Commercial mega-LLMs (Gemini, OpenAI) are excluded to prevent parametric knowledge contamination / data leakage,
+ensuring that diagnostic performance strictly benchmarks the Image RAG retrieval quality.
 """
 
 from __future__ import annotations
@@ -30,46 +28,73 @@ class BaseGenerator(ABC):
         return self.__class__.__name__
 
 
+_SYSTEM_PROMPT = """\
+Bạn là BoneRAG, một hệ thống chuyên gia y khoa dựa trên kỹ thuật Image Retrieval-Augmented Generation (Image RAG).
+Nhiệm vụ của bạn: Chỉ sử dụng các bằng chứng hình ảnh X-quang được trích xuất từ cơ sở dữ liệu để phân tích câu hỏi lâm sàng.
+Không suy đoán ngoài các bằng chứng được cung cấp. Trả lời bằng tiếng Việt chuyên môn y khoa.
+"""
+
+def _build_rag_prompt(question: str, evidence: list["Evidence"], used_retrieval: bool) -> str:
+    if not used_retrieval or not evidence:
+        return (
+            f"Câu hỏi lâm sàng: {question}\n\n"
+            "Không tìm thấy bằng chứng X-quang liên quan trong cơ sở dữ liệu. "
+            "Hãy thông báo rằng hệ thống cần thêm thông tin hoặc hình ảnh X-quang cụ thể hơn."
+        )
+
+    evidence_text = "\n".join(
+        f"[Evidence {i+1}] Ca ID: {e.image_id} | Tiêu đề: {e.title} | Vùng: {e.region} | Bộ phận: {e.body_part} "
+        f"| Chẩn đoán: {e.diagnosis} | Dạng tổn thương: {e.fracture_type} | Điểm tương đồng RAG: {e.rerank_score:.3f}\n"
+        f"  Ghi chú lâm sàng: {e.evidence_note}"
+        for i, e in enumerate(evidence[:4])
+    )
+    return (
+        f"Câu hỏi lâm sàng: {question}\n\n"
+        f"Các bằng chứng hình ảnh X-quang tương đồng được trích xuất từ CSDL:\n{evidence_text}\n\n"
+        "Hãy tổng hợp phân tích lâm sàng và đưa ra chẩn đoán dựa CHÍNH XÁC trên các bằng chứng trên."
+    )
+
+
 # ---------------------------------------------------------------------------
-# 1. MedicalReasoningGenerator — Advanced Medical AI Clinical Reasoner (Default)
+# 1. LocalRAGSynthesizer — Pure Evidence Synthesizer (0% Prior Knowledge Leakage)
 # ---------------------------------------------------------------------------
 
-class MedicalReasoningGenerator(BaseGenerator):
-    """Natural language clinical reasoning synthesizer for BoneRAG.
+class LocalRAGSynthesizer(BaseGenerator):
+    """Pure evidence-based local synthesizer.
     
-    Generates professional, fluid medical diagnostic narratives without requiring external API keys.
+    Generates natural clinical assessment strictly from RAG evidence without prior data leakage.
     """
 
     def generate(self, question: str, evidence: list["Evidence"], used_retrieval: bool) -> str:
         if not used_retrieval or not evidence:
             return (
-                "⚠️ **Kết quả phân tích BoneRAG AI:**\n\n"
-                "Không tìm thấy bằng chứng hình ảnh X-quang đủ độ tương đồng trong cơ sở dữ liệu y khoa.\n"
-                "👉 *Khuyến nghị:* Vui lòng tải lên hình ảnh X-quang rõ nét hoặc cung cấp thêm chi tiết lâm sàng (vùng tổn thương, triệu chứng đau, cơ chế chấn thương) để mô hình phân tích chính xác."
+                "⚠️ **BoneRAG Local RAG Evaluation:**\n\n"
+                "Không tìm thấy bằng chứng hình ảnh X-quang có điểm tương đồng đạt ngưỡng trong CSDL.\n"
+                "👉 *Đánh giá Benchmark:* Cần cung cấp hình ảnh X-quang rõ nét hoặc câu hỏi y khoa cụ thể hơn."
             )
 
         top = evidence[0]
         ref_cases = evidence[:3]
 
         lines = [
-            "🏥 **Báo cáo Chẩn đoán Hình ảnh & Phân tích Lâm sàng (BoneRAG AI)**",
+            "🏥 **Báo cáo Chẩn đoán Hình ảnh (BoneRAG Local SLM Benchmark)**",
             "---",
             f"❓ **Câu hỏi lâm sàng:** *\"{question}\"*",
             "",
-            "🔍 **1. Phân tích Bằng chứng Hình ảnh (Image RAG Matching):**",
-            f"- **Ca tham chiếu có độ tương đồng cao nhất:** ID `{top.image_id}` ({top.title})",
-            f"- **Vùng giải phẫu:** {top.region} (Bộ phận: {top.body_part})",
-            f"- **Đánh giá điểm tin cậy (Rerank Score):** `{top.rerank_score:.3f}`",
+            "🔍 **1. Bằng chứng Hình ảnh RAG Truy xuất (BiomedCLIP Vector Matching):**",
+            f"- **Ca tương đồng nhất (Top-1):** ID `{top.image_id}` ({top.title})",
+            f"- **Vùng giải phẫu & Bộ phận:** {top.region} ({top.body_part})",
+            f"- **Điểm tương đồng RAG (Rerank Score):** `{top.rerank_score:.3f}`",
             f"- **Ghi chú bằng chứng y khoa:** {top.evidence_note}",
             "",
-            "🩺 **2. Nhận định Tổn thương & Chẩn đoán Nghi ngờ:**",
-            f"- **Kết luận hình ảnh:** Nghi ngờ **{top.diagnosis}** tại {top.region}.",
-            f"- **Đặc điểm tổn thương:** {top.fracture_type if top.fracture_type else 'Cần đánh giá thêm đường gãy và di lệch'}.",
+            "🩺 **2. Nhận định Tổn thương & Kết luận Chẩn đoán:**",
+            f"- **Chẩn đoán RAG:** Nghi ngờ **{top.diagnosis}** tại {top.region}.",
+            f"- **Đặc điểm đường gãy/tổn thương:** {top.fracture_type if top.fracture_type else 'Cần đối chiếu các thế chụp thẳng/nghiêng'}.",
         ]
 
         if len(ref_cases) > 1:
             lines.append("")
-            lines.append("📋 **3. Đối chiếu Các ca Tương tự trong CSDL:**")
+            lines.append("📋 **3. Đối chiếu Các ca Tương đồng trong CSDL:**")
             for idx, item in enumerate(ref_cases, 1):
                 lines.append(
                     f"  {idx}. **{item.title}** (`{item.image_id}`): Vùng {item.region} | "
@@ -78,201 +103,161 @@ class MedicalReasoningGenerator(BaseGenerator):
 
         lines.extend([
             "",
-            "💡 **4. Khuyến nghị & Hướng xử lý Lâm sàng:**",
-            "- Cần kết hợp thăm khám lâm sàng (điểm đau chói, biến dạng xương, sưng nếp gấp).",
-            "- Đề xuất chỉ định nẹp cố định tạm thời nếu có dấu hiệu mất vững.",
-            "- Chụp bổ sung các thế X-quang thẳng/nhiêng hoặc CT Scanner nếu nghi ngờ gãy kín/phức tạp.",
+            "💡 **4. Khuyến nghị Lâm sàng:**",
+            "- Thăm khám điểm đau chói, kiểm tra mạch ngoại vi và vận động ngọn chi.",
+            "- Cố định tạm thời và chỉ định chụp CT Scanner nếu nghi ngờ gãy kín/phức tạp.",
             "",
             "---",
-            "⚠️ *Lưu ý: Phân tích được tổng hợp bởi mô hình trí tuệ nhân tạo BoneRAG AI nhằm mục đích hỗ trợ chẩn đoán. Mọi quyết định điều trị cần được tham vấn bác sĩ chuyên khoa chẩn đoán hình ảnh.*"
+            "⚠️ *Lưu ý đánh giá: Kết quả được tổng hợp trực tiếp từ RAG context nhằm đảm bảo tính khách quan cho Benchmark, không dùng tri thức ẩn của LLM thương mại.*"
         ])
 
         return "\n".join(lines)
 
 
+# Backward-compatibility alias
+TemplateGenerator = LocalRAGSynthesizer
+
+
 # ---------------------------------------------------------------------------
-# 2. GeminiGenerator — Google Gemini API
+# 2. LocalHuggingFaceGenerator — Local Small Language Models (< 2B Params)
 # ---------------------------------------------------------------------------
 
-_GEMINI_SYSTEM_PROMPT = """\
-Bạn là BoneRAG, một hệ thống chuyên gia AI hỗ trợ chẩn đoán hình ảnh X-quang xương dựa trên kỹ thuật Retrieval-Augmented Generation (RAG).
+class LocalHuggingFaceGenerator(BaseGenerator):
+    """Local Small-Parameter Language Model (SLM) using HuggingFace transformers.
+    
+    Using small open models (Qwen2.5-0.5B, Qwen2.5-1.5B, SmolLM2-1.7B) prevents
+    prior knowledge contamination, ensuring that output accuracy strictly reflects RAG quality.
+    """
 
-Nhiệm vụ của bạn:
-1. Phân tích câu hỏi lâm sàng của người dùng.
-2. Dựa trên các ca bằng chứng được trích xuất từ cơ sở dữ liệu X-quang y khoa, đưa ra nhận xét y khoa chi tiết, chuyên nghiệp.
-3. Luôn trích dẫn rõ ràng ID ca bằng chứng và điểm tương đồng RAG.
-4. Nhắc nhở lưu ý đây là hỗ trợ AI, không thay thế chẩn đoán của bác sĩ.
-5. Trả lời bằng tiếng Việt chuyên dùng trong y học Việt Nam.
-"""
+    def __init__(self, model_name: str = "Qwen/Qwen2.5-0.5B-Instruct") -> None:
+        self.model_name = model_name
+        self._tokenizer: Any = None
+        self._model: Any = None
 
-def _build_llm_prompt(question: str, evidence: list["Evidence"], used_retrieval: bool) -> str:
-    if not used_retrieval or not evidence:
-        return (
-            f"Câu hỏi lâm sàng: {question}\n\n"
-            "Không tìm thấy bằng chứng X-quang liên quan trong cơ sở dữ liệu. "
-            "Hãy thông báo cho người dùng rằng hệ thống cần thêm hình ảnh X-quang hoặc thông tin chi tiết hơn."
-        )
-
-    evidence_text = "\n".join(
-        f"[Evidence {i+1}] ID: {e.image_id} | Tiêu đề: {e.title} | Vùng: {e.region} | Bộ phận: {e.body_part} "
-        f"| Chẩn đoán: {e.diagnosis} | Loại gãy: {e.fracture_type} | Điểm tương đồng RAG: {e.rerank_score:.3f}\n"
-        f"  Ghi chú lâm sàng: {e.evidence_note}"
-        for i, e in enumerate(evidence[:4])
-    )
-    return (
-        f"Câu hỏi lâm sàng: {question}\n\n"
-        f"Các bằng chứng hình ảnh X-quang được tìm thấy từ CSDL:\n{evidence_text}\n\n"
-        "Hãy đưa ra phân tích chẩn đoán y khoa chi tiết, logic và nhận định tổn thương dựa trên các bằng chứng trên."
-    )
-
-
-class GeminiGenerator(BaseGenerator):
-    """Answer generator using Google Gemini API."""
-
-    def __init__(self, api_key: str, model: str = "gemini-1.5-flash") -> None:
-        self.api_key = api_key
-        self.model_name = model
-        self._client: Any = None
-
-    def _get_client(self) -> Any:
-        if self._client is None:
-            try:
-                import google.generativeai as genai  # type: ignore[import-untyped]
-                genai.configure(api_key=self.api_key)
-                self._client = genai.GenerativeModel(
-                    model_name=self.model_name,
-                    system_instruction=_GEMINI_SYSTEM_PROMPT,
-                )
-            except ImportError as exc:
-                raise RuntimeError(
-                    "Thư viện google-generativeai chưa được cài đặt. "
-                    "Hãy chạy: pip install google-generativeai"
-                ) from exc
-        return self._client
+    def _get_model_and_tokenizer(self) -> tuple[Any, Any]:
+        if self._model is None:
+            import torch
+            from transformers import AutoModelForCausalLM, AutoTokenizer
+            self._tokenizer = AutoTokenizer.from_pretrained(self.model_name)
+            device = "cuda" if torch.cuda.is_available() else "mps" if torch.backends.mps.is_available() else "cpu"
+            self._model = AutoModelForCausalLM.from_pretrained(
+                self.model_name,
+                torch_dtype=torch.float16 if device != "cpu" else torch.float32,
+            )
+            self._model.to(device)
+        return self._tokenizer, self._model
 
     def generate(self, question: str, evidence: list["Evidence"], used_retrieval: bool) -> str:
-        prompt = _build_llm_prompt(question, evidence, used_retrieval)
+        prompt = _build_rag_prompt(question, evidence, used_retrieval)
         try:
-            client = self._get_client()
-            response = client.generate_content(prompt)
-            return response.text.strip()
+            tokenizer, model = self._get_model_and_tokenizer()
+            messages = [
+                {"role": "system", "content": _SYSTEM_PROMPT},
+                {"role": "user", "content": prompt},
+            ]
+            text = tokenizer.apply_chat_template(messages, tokenize=False, add_generation_prompt=True)
+            model_inputs = tokenizer([text], return_tensors="pt").to(model.device)
+            generated_ids = model.generate(**model_inputs, max_new_tokens=400, temperature=0.3)
+            generated_ids = [
+                output_ids[len(input_ids):] for input_ids, output_ids in zip(model_inputs.input_ids, generated_ids)
+            ]
+            response = tokenizer.batch_decode(generated_ids, skip_special_tokens=True)[0]
+            return response.strip()
         except Exception as exc:
             return (
-                f"⚠️ **[Gemini AI Engine Note]** Không thể gọi API Gemini ({exc}).\n\n"
-                "**Chuyển sang BoneRAG Medical AI Reasoner:**\n\n" +
-                MedicalReasoningGenerator().generate(question, evidence, used_retrieval)
+                f"⚠️ **[Local SLM Note]** Không thể nạp weights `{self.model_name}` ({exc}).\n\n"
+                + LocalRAGSynthesizer().generate(question, evidence, used_retrieval)
             )
 
     @property
     def name(self) -> str:
-        return f"GeminiGenerator({self.model_name})"
+        return f"LocalSLM({self.model_name})"
 
 
 # ---------------------------------------------------------------------------
-# 3. OpenAIGenerator — OpenAI / Groq / OpenRouter / Ollama API
+# 3. OllamaLocalGenerator — Local Ollama / vLLM Endpoint
 # ---------------------------------------------------------------------------
 
-class OpenAIGenerator(BaseGenerator):
-    """Answer generator using OpenAI / Ollama / Groq API compatible endpoint."""
+class OllamaLocalGenerator(BaseGenerator):
+    """Local Ollama / vLLM endpoint runner on localhost:11434."""
 
-    def __init__(self, api_key: str = "", model: str = "gpt-4o-mini", base_url: str = "https://api.openai.com/v1") -> None:
-        self.api_key = api_key
+    def __init__(self, model: str = "qwen2.5:0.5b", host: str = "http://localhost:11434") -> None:
         self.model = model
-        self.base_url = base_url.rstrip("/")
+        self.host = host.rstrip("/")
 
     def generate(self, question: str, evidence: list["Evidence"], used_retrieval: bool) -> str:
-        prompt = _build_llm_prompt(question, evidence, used_retrieval)
-        url = f"{self.base_url}/chat/completions"
+        prompt = _build_rag_prompt(question, evidence, used_retrieval)
+        url = f"{self.host}/api/generate"
         payload = {
             "model": self.model,
-            "messages": [
-                {"role": "system", "content": _GEMINI_SYSTEM_PROMPT},
-                {"role": "user", "content": prompt},
-            ],
-            "temperature": 0.3,
+            "system": _SYSTEM_PROMPT,
+            "prompt": prompt,
+            "stream": False,
         }
-        headers = {"Content-Type": "application/json"}
-        if self.api_key:
-            headers["Authorization"] = f"Bearer {self.api_key}"
-
         try:
-            req = urllib.request.Request(url, data=json.dumps(payload).encode("utf-8"), headers=headers, method="POST")
+            req = urllib.request.Request(url, data=json.dumps(payload).encode("utf-8"), headers={"Content-Type": "application/json"}, method="POST")
             with urllib.request.urlopen(req, timeout=30) as resp:
                 res_data = json.loads(resp.read().decode("utf-8"))
-                return res_data["choices"][0]["message"]["content"].strip()
+                return res_data.get("response", "").strip()
         except Exception as exc:
             return (
-                f"⚠️ **[OpenAI API Error]** {exc}\n\n" +
-                MedicalReasoningGenerator().generate(question, evidence, used_retrieval)
+                f"⚠️ **[Ollama Local Error]** Không kết nối được server Ollama tại {self.host} ({exc}).\n\n"
+                + LocalRAGSynthesizer().generate(question, evidence, used_retrieval)
             )
-
-
-# ---------------------------------------------------------------------------
-# 4. TemplateGenerator — Baseline (Legacy rule-based)
-# ---------------------------------------------------------------------------
-
-class TemplateGenerator(BaseGenerator):
-    """Deterministic rule-based generator (original Milestone 2 baseline)."""
-
-    def generate(self, question: str, evidence: list["Evidence"], used_retrieval: bool) -> str:
-        return MedicalReasoningGenerator().generate(question, evidence, used_retrieval)
 
 
 # ---------------------------------------------------------------------------
 # Factory & Registries
 # ---------------------------------------------------------------------------
 
-def get_generator(name: str = "medical_llm", **kwargs: Any) -> BaseGenerator:
+def get_generator(name: str = "local_context_synth", **kwargs: Any) -> BaseGenerator:
     """Return generator instance by name.
 
     Args:
-        name: "medical_llm" | "gemini" | "openai" | "template"
-        **kwargs: passed to generator constructors
+        name: "local_context_synth" | "qwen_05b" | "qwen_15b" | "smollm_17b" | "ollama_local"
     """
-    if name == "gemini":
-        api_key = kwargs.get("api_key", "")
-        model = kwargs.get("model", "gemini-1.5-flash")
-        if api_key:
-            return GeminiGenerator(api_key=api_key, model=model)
-        # Fallback to Medical Reasoning AI if key not provided
-        return MedicalReasoningGenerator()
+    if name == "qwen_05b":
+        return LocalHuggingFaceGenerator("Qwen/Qwen2.5-0.5B-Instruct")
+    if name == "qwen_15b":
+        return LocalHuggingFaceGenerator("Qwen/Qwen2.5-1.5B-Instruct")
+    if name == "smollm_17b":
+        return LocalHuggingFaceGenerator("HuggingFaceTB/SmolLM2-1.7B-Instruct")
+    if name == "ollama_local":
+        model = kwargs.get("model", "qwen2.5:0.5b")
+        host = kwargs.get("host", "http://localhost:11434")
+        return OllamaLocalGenerator(model=model, host=host)
 
-    if name in ("openai", "groq", "ollama"):
-        api_key = kwargs.get("api_key", "")
-        model = kwargs.get("model", "gpt-4o-mini")
-        base_url = kwargs.get("base_url", "https://api.openai.com/v1")
-        return OpenAIGenerator(api_key=api_key, model=model, base_url=base_url)
-
-    # Default: MedicalReasoningGenerator (BoneRAG Medical AI)
-    return MedicalReasoningGenerator()
+    # Default: LocalRAGSynthesizer (Pure evidence synthesis, zero data leakage)
+    return LocalRAGSynthesizer()
 
 
 AVAILABLE_GENERATORS = {
-    "medical_llm": {
-        "label": "BoneRAG Medical AI (Chuyên gia Y khoa)",
-        "description": "Mô hình lập luận y khoa chuyên sâu. Tự động sinh phân tích lâm sàng tự nhiên không cần API key.",
+    "local_context_synth": {
+        "label": "BoneRAG Evidence Synthesizer (0% Prior Leakage)",
+        "description": "Mô hình tổng hợp RAG context thuần túy. Đảm bảo 0% rò rỉ tri thức ẩn, phục vụ Benchmark khách quan.",
         "requires_key": False,
     },
-    "gemini": {
-        "label": "Google Gemini (Multimodal SOTA LLM)",
-        "description": "Mô hình trí tuệ nhân tạo Gemini 1.5/2.0 của Google.",
-        "requires_key": True,
-        "key_name": "GEMINI_API_KEY",
-        "models": ["gemini-1.5-flash", "gemini-1.5-pro", "gemini-2.0-flash"],
-        "default_model": "gemini-1.5-flash",
-    },
-    "openai": {
-        "label": "OpenAI / Groq / OpenRouter LLM",
-        "description": "Tích hợp các mô hình GPT-4o, Llama-3, Qwen2-VL qua API.",
-        "requires_key": True,
-        "key_name": "OPENAI_API_KEY",
-        "models": ["gpt-4o-mini", "gpt-4o", "llama-3.3-70b", "qwen-2.5-72b"],
-        "default_model": "gpt-4o-mini",
-    },
-    "template": {
-        "label": "Template Baseline (Mẫu tĩnh)",
-        "description": "Mẫu câu trả lời quy tắc cơ bản (Baseline).",
+    "qwen_05b": {
+        "label": "Qwen2.5-0.5B Local SLM (0.5B Params)",
+        "description": "Mô hình Foundation Model nhỏ gọn chạy cục bộ (0.5B parameters). Tự động nạp weights nhẹ.",
         "requires_key": False,
+    },
+    "qwen_15b": {
+        "label": "Qwen2.5-1.5B Local SLM (1.5B Params)",
+        "description": "Mô hình Foundation Model cân bằng chạy cục bộ (1.5B parameters).",
+        "requires_key": False,
+    },
+    "smollm_17b": {
+        "label": "SmolLM2-1.7B Local SLM (1.7B Params)",
+        "description": "Mô hình Foundation Model open-weights chạy cục bộ (1.7B parameters).",
+        "requires_key": False,
+    },
+    "ollama_local": {
+        "label": "Ollama Local Endpoint (Qwen / Llama / Phi)",
+        "description": "Kết nối tới server Ollama/vLLM chạy cục bộ tại http://localhost:11434.",
+        "requires_key": False,
+        "models": ["qwen2.5:0.5b", "qwen2.5:1.5b", "llama3.2:1b", "smollm2:1.7b"],
+        "default_model": "qwen2.5:0.5b",
     },
 }
 

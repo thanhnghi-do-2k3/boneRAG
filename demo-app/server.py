@@ -68,31 +68,32 @@ AVAILABLE_ENCODERS = {
 }
 
 AVAILABLE_GENERATORS = {
-    "medical_llm": {
-        "label": "BoneRAG Medical AI (Chuyên gia Y khoa SOTA)",
-        "description": "Mô hình lập luận y khoa chuyên sâu. Tự động sinh phân tích lâm sàng tự nhiên không cần API key.",
+    "local_context_synth": {
+        "label": "BoneRAG Evidence Synthesizer (0% Prior Leakage)",
+        "description": "Mô hình tổng hợp RAG context thuần túy. Đảm bảo 0% rò rỉ tri thức ẩn, phục vụ Benchmark RAG khách quan.",
         "requires_key": False,
     },
-    "gemini": {
-        "label": "Google Gemini (Multimodal SOTA LLM)",
-        "description": "Mô hình trí tuệ nhân tạo Gemini 1.5/2.0 của Google.",
-        "requires_key": True,
-        "key_name": "GEMINI_API_KEY",
-        "models": ["gemini-1.5-flash", "gemini-1.5-pro", "gemini-2.0-flash"],
-        "default_model": "gemini-1.5-flash",
-    },
-    "openai": {
-        "label": "OpenAI / Groq / OpenRouter LLM",
-        "description": "Tích hợp các mô hình GPT-4o, Llama-3.3, Qwen2-VL qua API.",
-        "requires_key": True,
-        "key_name": "OPENAI_API_KEY",
-        "models": ["gpt-4o-mini", "gpt-4o", "llama-3.3-70b", "qwen-2.5-72b"],
-        "default_model": "gpt-4o-mini",
-    },
-    "template": {
-        "label": "Template Baseline (Mẫu quy tắc cơ bản)",
-        "description": "Mẫu câu trả lời quy tắc cơ bản (Baseline).",
+    "qwen_05b": {
+        "label": "Qwen2.5-0.5B Local SLM (0.5B Params)",
+        "description": "Mô hình Foundation Model nhỏ gọn chạy cục bộ (0.5B parameters). Tự động nạp weights nhẹ.",
         "requires_key": False,
+    },
+    "qwen_15b": {
+        "label": "Qwen2.5-1.5B Local SLM (1.5B Params)",
+        "description": "Mô hình Foundation Model cân bằng chạy cục bộ (1.5B parameters).",
+        "requires_key": False,
+    },
+    "smollm_17b": {
+        "label": "SmolLM2-1.7B Local SLM (1.7B Params)",
+        "description": "Mô hình Foundation Model open-weights chạy cục bộ (1.7B parameters).",
+        "requires_key": False,
+    },
+    "ollama_local": {
+        "label": "Ollama Local Endpoint (Qwen / Llama / Phi)",
+        "description": "Kết nối tới server Ollama/vLLM chạy cục bộ tại http://localhost:11434.",
+        "requires_key": False,
+        "models": ["qwen2.5:0.5b", "qwen2.5:1.5b", "llama3.2:1b", "smollm2:1.7b"],
+        "default_model": "qwen2.5:0.5b",
     },
 }
 
@@ -103,9 +104,7 @@ AVAILABLE_GENERATORS = {
 _PIPELINE_CACHE: dict[str, BoneRAGPipeline] = {}
 _ACTIVE_CONFIG: dict = {
     "encoder": "biomedclip",
-    "generator": "medical_llm",
-    "gemini_api_key": "",
-    "gemini_model": "gemini-1.5-flash",
+    "generator": "local_context_synth",
     "top_k": 4,
     "min_similarity": 0.02,
 }

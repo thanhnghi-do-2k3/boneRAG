@@ -150,31 +150,19 @@ export function ModelSelector({ onConfigChange, variant = 'sidebar' }) {
                 )}
               </div>
 
-              {active.generator === 'gemini' && (
+              {active.generator === 'ollama_local' && (
                 <div className="config-group gemini-group">
-                  <label className="config-field-label">Phiên bản Gemini Model</label>
-                  <select
-                    className="config-select"
-                    value={geminiModel}
-                    onChange={(e) => setGeminiModel(e.target.value)}
-                  >
-                    {GEMINI_MODELS.map((m) => (
-                      <option key={m} value={m}>{m}</option>
-                    ))}
-                  </select>
-
-                  <label className="config-field-label" style={{ marginTop: '10px' }}>
-                    Gemini API Key
-                    <span className="config-field-hint"> (Chỉ lưu trong RAM, bảo mật tuyệt đối)</span>
-                  </label>
+                  <label className="config-field-label">Ollama Endpoint URL</label>
                   <input
                     className="config-key-input"
-                    type="password"
-                    placeholder="Dán mã AIzaSy... tại đây"
-                    value={geminiKey}
-                    onChange={(e) => setGeminiKey(e.target.value)}
-                    autoComplete="off"
+                    type="text"
+                    placeholder="http://localhost:11434"
+                    value="http://localhost:11434"
+                    readOnly
                   />
+                  <p className="config-field-desc" style={{ marginTop: '6px' }}>
+                    💡 Đảm bảo bạn đã mở server Ollama (`ollama serve`) tại máy cục bộ.
+                  </p>
                 </div>
               )}
             </div>
