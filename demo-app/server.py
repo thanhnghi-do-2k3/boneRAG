@@ -280,9 +280,21 @@ class BoneRAGHandler(BaseHTTPRequestHandler):
             question_raw = qs.get("question_raw", [question])[0].strip()
             attached_image_raw = qs.get("attached_image", [""])[0].strip()
             attached_image: dict | None = None
+            image_data_url: str | None = None
+            image_input: str | None = None
+
             if attached_image_raw:
                 try:
                     attached_image = json.loads(attached_image_raw)
+                    if isinstance(attached_image, dict):
+                        data_url = attached_image.get("data_url")
+                        image_id = attached_image.get("image_id")
+                        if data_url:
+                            image_data_url = str(data_url)
+                        elif image_id and image_id in PIPELINE.record_by_id:
+                            rec = PIPELINE.record_by_id[image_id]
+                            if rec.image_path:
+                                image_input = rec.image_path
                 except json.JSONDecodeError:
                     pass
 
@@ -293,7 +305,7 @@ class BoneRAGHandler(BaseHTTPRequestHandler):
             pipeline = _get_pipeline()
             self._send_sse(
                 self._public_stream_events(
-                    pipeline.answer_events(question),
+                    pipeline.answer_events(question, image_data_url=image_data_url, image_input=image_input),
                     session_id=session_id,
                     question_raw=question_raw,
                     question_pipeline=question,

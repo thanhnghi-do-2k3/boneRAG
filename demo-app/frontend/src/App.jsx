@@ -83,7 +83,11 @@ export function App() {
       sessionId: sessionIdRef.current,
       questionRaw: trimmed,
       attachedImage: state.selectedImage
-        ? { image_id: state.selectedImage.image_id, source: state.selectedImage.data_url ? 'clipboard_paste' : 'library' }
+        ? {
+            image_id: state.selectedImage.image_id,
+            source: state.selectedImage.data_url ? 'clipboard_paste' : 'library',
+            data_url: state.selectedImage.data_url || null,
+          }
         : null,
     });
     eventSourceRef.current = source;

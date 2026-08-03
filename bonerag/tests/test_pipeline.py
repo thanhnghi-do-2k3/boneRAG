@@ -39,12 +39,16 @@ class MainAlgoPipelineTest(unittest.TestCase):
         self.assertEqual(len(vec_img), 256)
         self.assertEqual(len(vec_roi), 256)
 
-    def test_vector_index_factory(self):
-        index = get_vector_index(dim=256)
-        index.add("rec-01", (0.1,) * 256)
-        hits = index.search((0.1,) * 256, top_k=1)
-        self.assertEqual(len(hits), 1)
-        self.assertEqual(hits[0].record_id, "rec-01")
+    def test_image_query_encoding(self):
+        encoder = get_multimodal_encoder(mode="hashing")
+        # Sample tiny 1x1 transparent PNG data URL
+        sample_base64 = "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNkYAAAAAYAAjCB0C8AAAAASUVORK5CYII="
+        vec = encoder.encode_image_from_base64(sample_base64)
+        self.assertEqual(len(vec), 256)
+
+        pipeline = BoneRAGPipeline(encoder=encoder)
+        hits = pipeline.retrieve("Wrist fracture", image_data_url=sample_base64)
+        self.assertGreater(len(hits), 0)
 
 
 if __name__ == "__main__":

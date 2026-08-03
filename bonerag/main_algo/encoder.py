@@ -9,6 +9,9 @@ from pathlib import Path
 import re
 from typing import Any
 
+import base64
+import io
+
 Vector = tuple[float, ...]
 TOKEN_PATTERN = re.compile(r"[a-z0-9]+")
 
@@ -36,6 +39,24 @@ class BaseMultimodalEncoder(ABC):
     @abstractmethod
     def encode_roi(self, image_input: str | Path | Any, bbox: list[float]) -> Vector:
         pass
+
+    def encode_image_from_base64(self, data_url: str) -> Vector:
+        """Decode a data URL (data:image/...;base64,...) and encode as image vector.
+
+        This is the key method that enables query-image encoding when a user
+        pastes an X-ray image directly into the chat interface.
+        """
+        # Strip the data URL prefix if present
+        if "," in data_url:
+            data_url = data_url.split(",", 1)[1]
+        raw = base64.b64decode(data_url)
+        # Delegate to encode_image which accepts a PIL Image
+        return self._encode_pil_image_bytes(raw)
+
+    def _encode_pil_image_bytes(self, raw_bytes: bytes) -> Vector:
+        """Encode raw image bytes. Subclasses that use PIL override this."""
+        # Default fallback: treat as text
+        return self.encode_text("image visual content xray paste")
 
     def encode(self, text: str) -> Vector:
         """Backward-compatible alias for encode_text."""
@@ -106,6 +127,11 @@ class BiomedCLIPEncoder(BaseMultimodalEncoder):
 
         return self.encode_image(image)
 
+    def _encode_pil_image_bytes(self, raw_bytes: bytes) -> Vector:
+        """Decode raw image bytes to PIL Image and encode via CLIP."""
+        image = self.Image.open(io.BytesIO(raw_bytes)).convert("RGB")
+        return self.encode_image(image)
+
 
 class HashingTextEncoder(BaseMultimodalEncoder):
     """Deterministic feature-hashing text & visual encoder.
@@ -142,6 +168,11 @@ class HashingTextEncoder(BaseMultimodalEncoder):
             str(image_input) if isinstance(image_input, (str, Path)) else "crop"
         )
         return self.encode_text(roi_str)
+
+    def _encode_pil_image_bytes(self, raw_bytes: bytes) -> Vector:
+        """Encode raw image bytes via filename-text proxy for hashing encoder."""
+        # Hashing encoder has no real vision; encode a representative text
+        return self.encode_text("pasted xray bone image grayscale fracture")
 
 
 def get_multimodal_encoder(mode: str = "auto") -> BaseMultimodalEncoder:

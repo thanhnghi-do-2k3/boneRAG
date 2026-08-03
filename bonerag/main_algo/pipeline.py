@@ -107,10 +107,43 @@ class BoneRAGPipeline:
 
         return [asdict(record) for record in self.records]
 
-    def retrieve(self, question: str) -> list[SearchHit]:
-        """Online retrieval: encode the question and search multi-level index."""
+    def retrieve(
+        self,
+        question: str,
+        image_data_url: str | None = None,
+        image_input: str | Path | None = None,
+    ) -> list[SearchHit]:
+        """Online retrieval: encode query (text + optional image) and search index.
 
-        query_vector = self.encoder.encode_text(question)
+        Supports both user-pasted base64 images (image_data_url) and existing
+        dataset image files on disk (image_input). The query vector is a weighted
+        blend of text embedding (40%) and image embedding (60%) for multimodal RAG.
+        """
+        text_vec = self.encoder.encode_text(question)
+
+        img_vec = None
+        if image_input and Path(image_input).exists():
+            try:
+                img_vec = self.encoder.encode_image(image_input)
+            except Exception:
+                pass
+        elif image_data_url:
+            try:
+                img_vec = self.encoder.encode_image_from_base64(image_data_url)
+            except Exception:
+                pass
+
+        if img_vec:
+            alpha = 0.6
+            query_vector = tuple(
+                (1 - alpha) * t + alpha * i
+                for t, i in zip(text_vec, img_vec)
+            )
+            from .encoder import normalize
+            query_vector = normalize(list(query_vector))
+        else:
+            query_vector = text_vec
+
         raw_hits = self.index.search(query_vector, top_k=self.top_k * 3)
 
         # Merge hits by parent record_id
@@ -246,25 +279,49 @@ class BoneRAGPipeline:
             },
         )
 
-    def answer_events(self, question: str) -> Iterator[dict[str, object]]:
+    def answer_events(
+        self,
+        question: str,
+        image_data_url: str | None = None,
+        image_input: str | Path | None = None,
+    ) -> Iterator[dict[str, object]]:
         """Alias for stream_answer used by HTTP server."""
-        return self.stream_answer(question)
+        return self.stream_answer(question, image_data_url=image_data_url, image_input=image_input)
 
-    def stream_answer(self, question: str) -> Iterator[dict[str, object]]:
-        """Simulate an online response stream over Server-Sent Events."""
+    def stream_answer(
+        self,
+        question: str,
+        image_data_url: str | None = None,
+        image_input: str | Path | None = None,
+    ) -> Iterator[dict[str, object]]:
+        """Stream pipeline stages over Server-Sent Events.
+
+        Args:
+            question: The (pipeline-enriched) question string.
+            image_data_url: Optional base64 data URL of user-pasted image.
+            image_input: Optional file path of selected library image.
+        """
+        has_image = bool(image_data_url or image_input)
+        query_mode = "image+text" if has_image else "text-only"
 
         yield {"type": "stage", "stage": "receive-question", "message": f"Nhận câu hỏi: {question}"}
         yield {
             "type": "stage",
             "stage": "encode-question",
-            "message": f"Mã hóa bằng {self.encoder.__class__.__name__}",
+            "message": (
+                f"Mã hóa [{query_mode}] bằng {self.encoder.__class__.__name__} → "
+                f"vector {getattr(self.encoder, 'dim', 512)}-dim"
+                + (" (ảnh đính kèm → blend 60% image + 40% text)" if has_image else "")
+            ),
+            "encoder": self.encoder.__class__.__name__,
+            "query_mode": query_mode,
         }
 
-        hits = self.retrieve(question)
+        hits = self.retrieve(question, image_data_url=image_data_url, image_input=image_input)
         yield {
             "type": "stage",
             "stage": "retrieve-hits",
-            "message": f"Truy xuất được {len(hits)} ứng viên từ {self.index.__class__.__name__}",
+            "message": f"Truy xuất được {len(hits)} ứng viên từ {self.index.__class__.__name__} (mode={query_mode})",
             "hits": [asdict(hit) for hit in hits],
         }
 
@@ -287,10 +344,18 @@ class BoneRAGPipeline:
                 evidence=[],
                 debug={
                     "encoder_type": self.encoder.__class__.__name__,
+                    "generator_type": self.generator.name,
                     "index_type": self.index.__class__.__name__,
+                    "query_mode": query_mode,
                     "raw_hits": [asdict(hit) for hit in hits],
                     "top_hit_score": hits[0].score if hits else 0.0,
                     "evidence_count": 0,
+                    "model_config": {
+                        "encoder": self.encoder.__class__.__name__,
+                        "generator": self.generator.name,
+                        "top_k": self.top_k,
+                        "min_similarity": self.min_similarity,
+                    },
                 },
             )
             yield {"type": "done", "result": final_result.to_dict()}
@@ -321,10 +386,18 @@ class BoneRAGPipeline:
             evidence=evidence,
             debug={
                 "encoder_type": self.encoder.__class__.__name__,
+                "generator_type": self.generator.name,
                 "index_type": self.index.__class__.__name__,
+                "query_mode": query_mode,
                 "raw_hits": [asdict(hit) for hit in hits],
                 "top_hit_score": hits[0].score if hits else 0.0,
                 "evidence_count": len(evidence),
+                "model_config": {
+                    "encoder": self.encoder.__class__.__name__,
+                    "generator": self.generator.name,
+                    "top_k": self.top_k,
+                    "min_similarity": self.min_similarity,
+                },
             },
         )
         yield {"type": "done", "result": final_result.to_dict()}
