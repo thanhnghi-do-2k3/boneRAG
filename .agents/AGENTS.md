@@ -10,7 +10,8 @@ Project **BoneRAG**: Medical Visual Question Answering (VQA) for bone pathology 
 
 For complete function signatures, data schemas, and architecture map, see [.agents/CODEBASE_MAP.md](file://.agents/CODEBASE_MAP.md).
 
-## Token Efficiency Rules
+## Token Efficiency & Audit Rules
 1. Refer to [.agents/CODEBASE_MAP.md](file://.agents/CODEBASE_MAP.md) before performing redundant codebase research.
 2. Keep `.gitignore` rules intact (`node_modules/`, `.venv/`, `dist/`, `__pycache__/`).
 3. Always verify changes using unit tests: `python3 -m unittest discover -s bonerag/tests`.
+4. **Self-Correction Audit Logging**: Whenever the Agent identifies a bug or makes a code fix/refactoring, append a structured log entry to [agent_corrections.md](file:///Users/nghidothanh/Documents/School/TGMT/BoneRAG/bonerag/algorithm-logs/agent_corrections.md) with Timestamp, Reason for Fix, Root Cause, Changes Applied, and Outcome.
