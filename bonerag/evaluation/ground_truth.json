@@ -1,30 +1,212 @@
 [
   {
-    "question": "Wrist fracture X-ray",
-    "expected_evidence_ids": ["fracatlas-fractured-img0001200", "fracatlas-fractured-img0000019", "frac-wrist-001"],
-    "expected_diagnosis": "fracture",
-    "expected_body_part": "wrist",
-    "notes": "FracAtlas wrist fracture case"
-  },
-  {
-    "question": "Hip fracture diagnosis",
-    "expected_evidence_ids": ["fracatlas-fractured-img0000307", "frac-hip-007"],
-    "expected_diagnosis": "fracture",
-    "expected_body_part": "hip",
-    "notes": "FracAtlas hip fracture case"
-  },
-  {
-    "question": "Normal bone X-ray hand",
-    "expected_evidence_ids": ["fracatlas-normal-img0000000", "normal-wrist-022"],
-    "expected_diagnosis": "normal",
-    "expected_body_part": "hand",
-    "notes": "FracAtlas normal reference case"
-  },
-  {
-    "question": "Radius fracture tibia",
+    "question": "Wrist fracture X-ray showing distal radius break",
     "expected_evidence_ids": ["fracatlas-fractured-img0000019", "frac-wrist-001"],
     "expected_diagnosis": "fracture",
     "expected_body_part": "wrist",
-    "notes": "FracAtlas radius fracture case"
+    "notes": "FracAtlas wrist distal radius fracture case"
+  },
+  {
+    "question": "Fifth metacarpal hand fracture diagnosis",
+    "expected_evidence_ids": ["frac-hand-014"],
+    "expected_diagnosis": "fracture",
+    "expected_body_part": "hand",
+    "notes": "Fifth metacarpal shaft fracture"
+  },
+  {
+    "question": "Hip fracture femoral neck displacement",
+    "expected_evidence_ids": ["fracatlas-fractured-img0000307", "frac-hip-007"],
+    "expected_diagnosis": "fracture",
+    "expected_body_part": "hip",
+    "notes": "Femoral neck fracture case"
+  },
+  {
+    "question": "Normal hand bone X-ray without fracture",
+    "expected_evidence_ids": ["fracatlas-normal-img0000000", "normal-hand-003"],
+    "expected_diagnosis": "normal",
+    "expected_body_part": "hand",
+    "notes": "Normal hand X-ray reference control"
+  },
+  {
+    "question": "Tibia shaft fracture in lower leg",
+    "expected_evidence_ids": ["frac-tibia-009"],
+    "expected_diagnosis": "fracture",
+    "expected_body_part": "leg",
+    "notes": "Tibial shaft fracture case"
+  },
+  {
+    "question": "Normal wrist X-ray with intact radius and ulna",
+    "expected_evidence_ids": ["fracatlas-normal-img0000000", "normal-wrist-022"],
+    "expected_diagnosis": "normal",
+    "expected_body_part": "wrist",
+    "notes": "Normal wrist reference control"
+  },
+  {
+    "question": "Transverse fracture of distal radius",
+    "expected_evidence_ids": ["frac-wrist-001", "fracatlas-fractured-img0000019"],
+    "expected_diagnosis": "fracture",
+    "expected_body_part": "wrist",
+    "notes": "Transverse distal radius fracture"
+  },
+  {
+    "question": "Normal hip joint X-ray pelvis alignment",
+    "expected_evidence_ids": ["fracatlas-normal-img0000000"],
+    "expected_diagnosis": "normal",
+    "expected_body_part": "hip",
+    "notes": "Normal hip reference control"
+  },
+  {
+    "question": "Oblique fracture line in fifth metacarpal shaft",
+    "expected_evidence_ids": ["frac-hand-014"],
+    "expected_diagnosis": "fracture",
+    "expected_body_part": "hand",
+    "notes": "Oblique hand metacarpal fracture"
+  },
+  {
+    "question": "Intracapsular femoral neck fracture hip X-ray",
+    "expected_evidence_ids": ["fracatlas-fractured-img0000307", "frac-hip-007"],
+    "expected_diagnosis": "fracture",
+    "expected_body_part": "hip",
+    "notes": "Intracapsular hip fracture"
+  },
+  {
+    "question": "Comminuted tibia fracture lower leg X-ray",
+    "expected_evidence_ids": ["frac-tibia-009"],
+    "expected_diagnosis": "fracture",
+    "expected_body_part": "leg",
+    "notes": "Comminuted tibia fracture"
+  },
+  {
+    "question": "Normal forearm bone X-ray showing smooth cortex",
+    "expected_evidence_ids": ["fracatlas-normal-img0000000"],
+    "expected_diagnosis": "normal",
+    "expected_body_part": "forearm",
+    "notes": "Normal forearm bone reference"
+  },
+  {
+    "question": "Scaphoid bone fracture wrist X-ray view",
+    "expected_evidence_ids": ["frac-wrist-001", "fracatlas-fractured-img0000019"],
+    "expected_diagnosis": "fracture",
+    "expected_body_part": "wrist",
+    "notes": "Scaphoid carpal fracture"
+  },
+  {
+    "question": "Cortical disruption in distal radius metaphysis",
+    "expected_evidence_ids": ["frac-wrist-001"],
+    "expected_diagnosis": "fracture",
+    "expected_body_part": "wrist",
+    "notes": "Metaphysis cortical disruption"
+  },
+  {
+    "question": "Normal pediatric wrist X-ray without fracture",
+    "expected_evidence_ids": ["fracatlas-normal-img0000000", "normal-wrist-022"],
+    "expected_diagnosis": "normal",
+    "expected_body_part": "wrist",
+    "notes": "Normal pediatric wrist reference"
+  },
+  {
+    "question": "Mild displacement oblique metacarpal fracture",
+    "expected_evidence_ids": ["frac-hand-014"],
+    "expected_diagnosis": "fracture",
+    "expected_body_part": "hand",
+    "notes": "Displaced metacarpal fracture"
+  },
+  {
+    "question": "Subcapital hip fracture with joint line disruption",
+    "expected_evidence_ids": ["fracatlas-fractured-img0000307", "frac-hip-007"],
+    "expected_diagnosis": "fracture",
+    "expected_body_part": "hip",
+    "notes": "Subcapital hip fracture"
+  },
+  {
+    "question": "Tibia fibula shaft X-ray with lucent fracture line",
+    "expected_evidence_ids": ["frac-tibia-009"],
+    "expected_diagnosis": "fracture",
+    "expected_body_part": "leg",
+    "notes": "Tibia fibula fracture line"
+  },
+  {
+    "question": "Intact trabecular structure normal hip X-ray",
+    "expected_evidence_ids": ["fracatlas-normal-img0000000"],
+    "expected_diagnosis": "normal",
+    "expected_body_part": "hip",
+    "notes": "Normal hip trabecular structure"
+  },
+  {
+    "question": "Forearm X-ray with fractured radius shaft",
+    "expected_evidence_ids": ["fracatlas-fractured-img0000019", "frac-wrist-001"],
+    "expected_diagnosis": "fracture",
+    "expected_body_part": "forearm",
+    "notes": "Fractured radius shaft"
+  },
+  {
+    "question": "Normal adult hand X-ray intact phalanges",
+    "expected_evidence_ids": ["fracatlas-normal-img0000000", "normal-hand-003"],
+    "expected_diagnosis": "normal",
+    "expected_body_part": "hand",
+    "notes": "Normal adult hand phalanges"
+  },
+  {
+    "question": "Gãy xương cổ tay X-quang vị trí quay dưới",
+    "expected_evidence_ids": ["fracatlas-fractured-img0000019", "frac-wrist-001"],
+    "expected_diagnosis": "fracture",
+    "expected_body_part": "wrist",
+    "notes": "Vietnamese query wrist fracture"
+  },
+  {
+    "question": "Chẩn đoán gãy xương hông khớp háng X-quang",
+    "expected_evidence_ids": ["fracatlas-fractured-img0000307", "frac-hip-007"],
+    "expected_diagnosis": "fracture",
+    "expected_body_part": "hip",
+    "notes": "Vietnamese query hip fracture"
+  },
+  {
+    "question": "Ảnh X-quang bàn tay bình thường không gãy xương",
+    "expected_evidence_ids": ["fracatlas-normal-img0000000", "normal-hand-003"],
+    "expected_diagnosis": "normal",
+    "expected_body_part": "hand",
+    "notes": "Vietnamese query normal hand control"
+  },
+  {
+    "question": "Vết nứt xương cẳng chân chày mác X-quang",
+    "expected_evidence_ids": ["frac-tibia-009"],
+    "expected_diagnosis": "fracture",
+    "expected_body_part": "leg",
+    "notes": "Vietnamese query tibia fracture"
+  },
+  {
+    "question": "Gãy xương bàn tay ngón 5 đường gãy chéo",
+    "expected_evidence_ids": ["frac-hand-014"],
+    "expected_diagnosis": "fracture",
+    "expected_body_part": "hand",
+    "notes": "Vietnamese query metacarpal fracture"
+  },
+  {
+    "question": "Bệnh nhân bị đau cổ tay sau ngã chống tay có gãy xương không",
+    "expected_evidence_ids": ["fracatlas-fractured-img0000019", "frac-wrist-001"],
+    "expected_diagnosis": "fracture",
+    "expected_body_part": "wrist",
+    "notes": "Clinical scenario wrist fall fracture"
+  },
+  {
+    "question": "Kiểm tra tổn thương gãy cổ xương đùi X-quang hông",
+    "expected_evidence_ids": ["fracatlas-fractured-img0000307", "frac-hip-007"],
+    "expected_diagnosis": "fracture",
+    "expected_body_part": "hip",
+    "notes": "Clinical scenario hip fracture"
+  },
+  {
+    "question": "Ảnh X-quang xương cẳng tay bình thường không nứt gãy",
+    "expected_evidence_ids": ["fracatlas-normal-img0000000"],
+    "expected_diagnosis": "normal",
+    "expected_body_part": "forearm",
+    "notes": "Vietnamese query normal forearm control"
+  },
+  {
+    "question": "Gãy kín đầu dưới xương quay cổ tay nghiêng",
+    "expected_evidence_ids": ["frac-wrist-001", "fracatlas-fractured-img0000019"],
+    "expected_diagnosis": "fracture",
+    "expected_body_part": "wrist",
+    "notes": "Clinical closed radius fracture"
   }
 ]
