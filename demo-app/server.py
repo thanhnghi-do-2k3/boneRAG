@@ -160,38 +160,47 @@ class BoneRAGHandler(BaseHTTPRequestHandler):
     # ------------------------------------------------------------------
 
     def _send_json(self, payload: dict | list, status: int = 200) -> None:
-        raw = json.dumps(payload, ensure_ascii=False, indent=2).encode("utf-8")
-        self.send_response(status)
-        self.send_header("Content-Type", "application/json; charset=utf-8")
-        self.send_header("Content-Length", str(len(raw)))
-        self.send_header("Access-Control-Allow-Origin", "*")
-        self.end_headers()
-        self.wfile.write(raw)
+        try:
+            raw = json.dumps(payload, ensure_ascii=False, indent=2).encode("utf-8")
+            self.send_response(status)
+            self.send_header("Content-Type", "application/json; charset=utf-8")
+            self.send_header("Content-Length", str(len(raw)))
+            self.send_header("Access-Control-Allow-Origin", "*")
+            self.end_headers()
+            self.wfile.write(raw)
+        except (BrokenPipeError, ConnectionResetError):
+            pass
 
     def _send_file(self, path: Path) -> None:
         if not path.exists() or not path.is_file():
             self._send_json({"error": "not found"}, status=404)
             return
-        content_type = mimetypes.guess_type(path.name)[0] or "application/octet-stream"
-        raw = path.read_bytes()
-        self.send_response(200)
-        self.send_header("Content-Type", content_type)
-        self.send_header("Content-Length", str(len(raw)))
-        self.end_headers()
-        self.wfile.write(raw)
+        try:
+            content_type = mimetypes.guess_type(path.name)[0] or "application/octet-stream"
+            raw = path.read_bytes()
+            self.send_response(200)
+            self.send_header("Content-Type", content_type)
+            self.send_header("Content-Length", str(len(raw)))
+            self.end_headers()
+            self.wfile.write(raw)
+        except (BrokenPipeError, ConnectionResetError):
+            pass
 
     def _send_sse(self, events) -> None:
-        self.send_response(200)
-        self.send_header("Content-Type", "text/event-stream; charset=utf-8")
-        self.send_header("Cache-Control", "no-cache")
-        self.send_header("Connection", "keep-alive")
-        self.send_header("Access-Control-Allow-Origin", "*")
-        self.end_headers()
-        for event in events:
-            raw = f"data: {json.dumps(event, ensure_ascii=False)}\n\n".encode("utf-8")
-            self.wfile.write(raw)
-            self.wfile.flush()
-            time.sleep(0.02)
+        try:
+            self.send_response(200)
+            self.send_header("Content-Type", "text/event-stream; charset=utf-8")
+            self.send_header("Cache-Control", "no-cache")
+            self.send_header("Connection", "keep-alive")
+            self.send_header("Access-Control-Allow-Origin", "*")
+            self.end_headers()
+            for event in events:
+                raw = f"data: {json.dumps(event, ensure_ascii=False)}\n\n".encode("utf-8")
+                self.wfile.write(raw)
+                self.wfile.flush()
+                time.sleep(0.02)
+        except (BrokenPipeError, ConnectionResetError):
+            pass
 
     def do_OPTIONS(self) -> None:
         self.send_response(204)
