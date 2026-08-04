@@ -28,6 +28,9 @@ from pathlib import Path
 from urllib.parse import parse_qs, quote, unquote, urlparse
 
 if __package__ in {None, ""}:
+    repo_root = str(Path(__file__).resolve().parents[1])
+    if repo_root not in sys.path:
+        sys.path.insert(0, repo_root)
     sys.path.append(str(Path(__file__).resolve().parents[1] / "bonerag"))
 
 from main_algo.encoder import get_multimodal_encoder, AVAILABLE_ENCODERS
@@ -358,6 +361,79 @@ class BoneRAGHandler(BaseHTTPRequestHandler):
 
             yield event
 
+    def _live_benchmark_stream_events(self, encoder_name: str, generator_name: str) -> Iterator[dict[str, object]]:
+        """Run real-time benchmark suite and stream events over SSE."""
+        from main_algo.encoder import get_multimodal_encoder
+        from main_algo.generator import get_generator
+        from main_algo.pipeline import BoneRAGPipeline
+
+        gt_cases = EVALUATOR.ground_truth
+        total_cases = len(gt_cases)
+
+        yield {
+            "type": "bench-start",
+            "total": total_cases,
+            "encoder": encoder_name,
+            "generator": generator_name,
+            "message": f"🚀 Bắt đầu Benchmark thực tế 30 ca test với Encoder={encoder_name}, Generator={generator_name}",
+        }
+
+        try:
+            encoder_inst = get_multimodal_encoder(mode=encoder_name)
+            generator_inst = get_generator(name=generator_name)
+            pipe = BoneRAGPipeline(encoder=encoder_inst, generator=generator_inst)
+        except Exception as exc:
+            yield {"type": "bench-error", "message": f"Lỗi khởi tạo pipeline: {str(exc)}"}
+            return
+
+        evaluated_sessions: list[dict[str, object]] = []
+
+        for idx, case in enumerate(gt_cases, start=1):
+            q = case["question"]
+            start_t = time.time()
+            res = pipe.answer(q)
+            lat_ms = (time.time() - start_t) * 1000.0
+
+            ev_ids = [e.image_id for e in res.evidence]
+            raw_hits = res.debug.get("raw_hits", [])
+            retrieved_raw_ids = [h.get("record_id", "") if isinstance(h, dict) else getattr(h, "record_id", "") for h in raw_hits]
+
+            entry = {
+                "session_id": f"bench-live-{idx}",
+                "question": q,
+                "used_retrieval": res.used_retrieval,
+                "retrieved_evidence_ids": ev_ids,
+                "raw_retrieved_ids": retrieved_raw_ids,
+                "expected_evidence_ids": case.get("expected_evidence_ids", []),
+                "answer": res.answer,
+                "expected_diagnosis": case.get("expected_diagnosis", "fracture"),
+                "expected_body_part": case.get("expected_body_part", "wrist"),
+                "latency_ms": lat_ms,
+            }
+            scores = EVALUATOR.score_session(entry)
+            entry["eval_scores"] = scores
+            evaluated_sessions.append(entry)
+
+            yield {
+                "type": "bench-case",
+                "index": idx,
+                "total": total_cases,
+                "question": q,
+                "expected_diagnosis": case.get("expected_diagnosis", "fracture"),
+                "retrieved_count": len(ev_ids),
+                "top_evidence": ev_ids[0] if ev_ids else "N/A",
+                "latency_ms": round(lat_ms, 2),
+                "scores": scores,
+            }
+
+        aggregated = EVALUATOR.aggregate(evaluated_sessions)
+        yield {
+            "type": "bench-complete",
+            "summary": aggregated,
+            "total_evaluated": len(evaluated_sessions),
+            "message": "✅ Hoàn tất Benchmark 30 ca test!",
+        }
+
     def _serve_frontend_asset(self, route: str) -> bool:
         if not FRONTEND_DIST.exists():
             return False
@@ -446,6 +522,13 @@ class BoneRAGHandler(BaseHTTPRequestHandler):
         if route == "/api/sessions":
             sessions = SESSION_LOGGER.load_all()
             self._send_json(sessions)
+            return
+
+        if route == "/api/run-live-benchmark":
+            qs = parse_qs(parsed.query)
+            enc_name = qs.get("encoder", [_ACTIVE_CONFIG.get("encoder", "biomedclip")])[0]
+            gen_name = _normalize_generator_name(qs.get("generator", [_ACTIVE_CONFIG.get("generator", "local_context_synth")])[0])
+            self._send_sse(self._live_benchmark_stream_events(enc_name, gen_name))
             return
 
         if self._serve_frontend_asset(route):

@@ -16,6 +16,17 @@ Mỗi lần Agent phát hiện sai sót / sửa đổi thuật toán, một entr
 
 ## 📜 Nhật ký sửa đổi (Audit Entries):
 
+### [2026-08-04] Entry #006 - Triển khai Màn hình Benchmark Khoa học Trực tiếp trên Web UI (Live Terminal & Controls)
+- ⏱️ **Thời gian**: 2026-08-04T14:27:00Z
+- ❓ **Lý do sửa**: Người dùng yêu cầu tạo tính năng Benchmark minh bạch 100% trên Web UI cho phép chọn cấu hình và hiển thị log chạy thực tế dòng-theo-dòng qua SSE.
+- 🔍 **Nguyên nhân lỗi**: Giao diện cũ chưa có màn hình chọn tham số Benchmark và chưa có đường dẫn API streaming log suy luận từng ca test.
+- 🛠️ **Những gì đã sửa**:
+  1. Thêm API endpoint `GET /api/run-live-benchmark` tại [`demo-app/server.py`](file:///Users/nghidothanh/Documents/School/TGMT/BoneRAG/demo-app/server.py) đẩy luồng sự kiện SSE suy luận thực tế từng ca test.
+  2. Nâng cấp toàn bộ màn hình [`demo-app/frontend/src/views/EvaluationScreen.jsx`](file:///Users/nghidothanh/Documents/School/TGMT/BoneRAG/demo-app/frontend/src/views/EvaluationScreen.jsx) với Control Panel, Live SSE Terminal Monitor và Bảng Kết quả Tổng hợp Chỉ số (Accuracy, Faithfulness, Recall, MRR, Latency).
+- ✅ **Kết quả thu được**: Người dùng có thể khởi chạy và giám sát 100% tiến độ suy luận Benchmark trực tiếp trên giao diện web tại `http://localhost:8088/`.
+
+---
+
 ### [2026-08-04] Entry #005 - Triển khai Milestone 3: Anatomical Reranker, Hard Negative Mining & Evidence Gate
 - ⏱️ **Thời gian**: 2026-08-04T14:15:00Z
 - ❓ **Lý do sửa**: Cần hoàn thiện Milestone 3 nhằm nâng cao độ chính xác sắp xếp bằng chứng y khoa và từ chối các câu hỏi không thuộc miền ngữ cảnh X-quang.
