@@ -4,25 +4,28 @@ Runs 4-layer comparative evaluation matrix across SOTA baselines:
 1. Baseline 1: No-RAG (Direct Zero-Shot Generation)
 2. Baseline 2: Text-Only RAG (Traditional Document RAG)
 3. Baseline 3: Standard Multimodal CLIP RAG (No Rerank & No Gate)
-4. Proposed: Full BoneRAG Pipeline (Milestone 1-4 Complete)
+4. Proposed: Full BoneRAG Pipeline (Milestone 1-5 Complete)
+
+Supports running either fast evidence synthesis (LocalRAGSynthesizer) or real neural SLM (Qwen2.5-0.5B-Instruct).
 
 Usage:
-    python3 -m bonerag.evaluation.run_benchmark
+    python3 -m bonerag.evaluation.run_benchmark [--use-llm]
 """
 
 from __future__ import annotations
 
 import json
+import sys
 import time
 from pathlib import Path
 
 from bonerag.evaluation.evaluator import BoneRAGEvaluator
 from bonerag.main_algo.encoder import get_multimodal_encoder
-from bonerag.main_algo.generator import LocalRAGSynthesizer
+from bonerag.main_algo.generator import LocalHuggingFaceGenerator, LocalRAGSynthesizer
 from bonerag.main_algo.pipeline import BoneRAGPipeline
 
 
-def run_benchmark_matrix() -> list[dict]:
+def run_benchmark_matrix(use_neural_llm: bool = False) -> list[dict]:
     evaluator = BoneRAGEvaluator()
     ground_truth = evaluator.ground_truth
     experiments_log_path = Path(__file__).resolve().parent / "experiments.jsonl"
@@ -36,11 +39,19 @@ def run_benchmark_matrix() -> list[dict]:
 
     results = []
 
+    generator = (
+        LocalHuggingFaceGenerator("Qwen/Qwen2.5-0.5B-Instruct")
+        if use_neural_llm
+        else LocalRAGSynthesizer()
+    )
+
+    gen_type_str = "Neural LLM (Qwen2.5-0.5B-Instruct)" if use_neural_llm else "Local Evidence Synthesizer"
+    print(f"🤖 [Benchmark Runner] Active Answer Generator: {gen_type_str}")
+
     for label, mode_key, enc_key in baselines_to_test:
         print(f"\n⚡ [Benchmark Matrix] Testing Configuration: {label}...")
         try:
             encoder = get_multimodal_encoder(mode=enc_key)
-            generator = LocalRAGSynthesizer()
             pipeline = BoneRAGPipeline(encoder=encoder, generator=generator)
 
             # Adjust pipeline settings according to baseline mode
@@ -93,6 +104,7 @@ def run_benchmark_matrix() -> list[dict]:
             agg["baseline_name"] = label
             agg["mode_key"] = mode_key
             agg["encoder_key"] = enc_key
+            agg["generator_type"] = gen_type_str
             agg["total_time_sec"] = elapsed_total
             results.append(agg)
 
@@ -129,7 +141,8 @@ def print_markdown_report(results: list[dict]) -> None:
 
 
 def main() -> None:
-    results = run_benchmark_matrix()
+    use_llm = "--use-llm" in sys.argv
+    results = run_benchmark_matrix(use_neural_llm=use_llm)
     print_markdown_report(results)
 
 
