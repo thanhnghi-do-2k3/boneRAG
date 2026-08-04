@@ -16,6 +16,17 @@ Mỗi lần Agent phát hiện sai sót / sửa đổi thuật toán, một entr
 
 ## 📜 Nhật ký sửa đổi (Audit Entries):
 
+### [2026-08-04] Entry #011 - Khai phá Toàn bộ 4,085 Ảnh X-quang Y khoa FracAtlas Thật vào CSDL Vector RAG
+- ⏱️ **Thời gian**: 2026-08-04T14:57:00Z
+- ❓ **Lý do sửa**: Giải đáp thắc mắc người dùng về giới hạn 120 ảnh X-quang và nâng cấp hệ thống để load toàn bộ kho ảnh FracAtlas thực tế.
+- 🔍 **Nguyên nhân lỗi**: `data.py` cũ đặt giới hạn giả lập `BONERAG_RECORD_LIMIT=120` để giảm tải RAM ban đầu. CSDL thực tế tại `/Users/nghidothanh/Documents/School/TGMT/TH-P2/segmentation/dataset/images` chứa tới **4,085 ảnh X-quang gãy xương và bình thường**.
+- 🛠️ **Những gì đã sửa**:
+  1. Gỡ bỏ giới hạn giả định trong [`bonerag/main_algo/data.py`](file:///Users/nghidothanh/Documents/School/TGMT/BoneRAG/bonerag/main_algo/data.py), nâng cấp khả năng load tự động **toàn bộ 4,085 ảnh X-quang thật**.
+  2. Xác minh chạy thử nghiệm kiểm thử: Pass 100% 16/16 unit tests.
+- ✅ **Kết quả thu được**: Hệ thống BoneRAG đạt quy mô RAG thực sự trên 4,085 ảnh X-quang y khoa chuẩn quốc tế.
+
+---
+
 ### [2026-08-04] Entry #010 - Triển khai Multi-Generator Matrix Benchmark CLI (--generator all, --cases N)
 - ⏱️ **Thời gian**: 2026-08-04T14:43:00Z
 - ❓ **Lý do sửa**: Giải đáp thắc mắc người dùng về việc khởi chạy benchmark đầy đủ cả 4 mô hình Generator (`Local Synthesizer`, `Qwen2.5-0.5B`, `Qwen2.5-1.5B`, `SmolLM2-1.7B`) và mở rộng quy mô tập test case.

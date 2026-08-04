@@ -117,8 +117,8 @@ def _build_dataset_sample_records() -> list[ImageRecord]:
     if not fractured_files and not non_fractured_files:
         return []
 
-    limit = int(os.environ.get("BONERAG_RECORD_LIMIT", "120"))
-    limit = max(12, min(limit, 500))
+    limit_env = os.environ.get("BONERAG_RECORD_LIMIT", "").strip()
+    limit = int(limit_env) if limit_env.isdigit() else max(len(fractured_files) + len(non_fractured_files), 4085)
     fractured_limit = min(len(fractured_files), max(1, int(limit * 0.65)))
     normal_limit = min(len(non_fractured_files), max(1, limit - fractured_limit))
     selected_fractured = fractured_files[:fractured_limit]
