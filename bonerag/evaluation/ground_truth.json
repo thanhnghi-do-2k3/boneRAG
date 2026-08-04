@@ -1,30 +1,30 @@
 [
   {
     "question": "Wrist fracture X-ray",
-    "expected_evidence_ids": ["fracatlas-fractured-img0001351"],
-    "expected_diagnosis": "Fractured",
-    "expected_body_part": "Wrist",
-    "notes": "Bootstrap ground truth from SAMPLE_RECORDS"
+    "expected_evidence_ids": ["fracatlas-fractured-img0001200", "fracatlas-fractured-img0000019", "frac-wrist-001"],
+    "expected_diagnosis": "fracture",
+    "expected_body_part": "wrist",
+    "notes": "FracAtlas wrist fracture case"
   },
   {
     "question": "Hip fracture diagnosis",
-    "expected_evidence_ids": ["fracatlas-fractured-img0000307"],
-    "expected_diagnosis": "Fractured",
-    "expected_body_part": "Hip",
-    "notes": "Bootstrap ground truth from SAMPLE_RECORDS"
+    "expected_evidence_ids": ["fracatlas-fractured-img0000307", "frac-hip-007"],
+    "expected_diagnosis": "fracture",
+    "expected_body_part": "hip",
+    "notes": "FracAtlas hip fracture case"
   },
   {
     "question": "Normal bone X-ray hand",
-    "expected_evidence_ids": ["fracatlas-normal-img0000000"],
-    "expected_diagnosis": "Normal",
-    "expected_body_part": "Hand",
-    "notes": "Bootstrap ground truth from SAMPLE_RECORDS"
+    "expected_evidence_ids": ["fracatlas-normal-img0000000", "normal-wrist-022"],
+    "expected_diagnosis": "normal",
+    "expected_body_part": "hand",
+    "notes": "FracAtlas normal reference case"
   },
   {
     "question": "Radius fracture tibia",
-    "expected_evidence_ids": ["fracatlas-fractured-img0000019"],
-    "expected_diagnosis": "Fractured",
-    "expected_body_part": "Wrist",
-    "notes": "Bootstrap ground truth from SAMPLE_RECORDS"
+    "expected_evidence_ids": ["fracatlas-fractured-img0000019", "frac-wrist-001"],
+    "expected_diagnosis": "fracture",
+    "expected_body_part": "wrist",
+    "notes": "FracAtlas radius fracture case"
   }
 ]

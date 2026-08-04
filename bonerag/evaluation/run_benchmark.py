@@ -53,6 +53,14 @@ def run_benchmark_matrix() -> list[dict]:
                 t1 = time.perf_counter()
                 latency_ms = int((t1 - t0) * 1000)
 
+                raw_hits = res.debug.get("raw_hits", [])
+                hits_list = []
+                for h in raw_hits:
+                    raw_id = h.get("record_id", "") if isinstance(h, dict) else getattr(h, "record_id", "")
+                    parent_id = raw_id.split("#")[0] if raw_id else ""
+                    score = h.get("score", 0.0) if isinstance(h, dict) else getattr(h, "score", 0.0)
+                    hits_list.append({"record_id": parent_id, "score": score})
+
                 session_log = {
                     "question_raw": question,
                     "answer": res.answer,
@@ -64,10 +72,7 @@ def run_benchmark_matrix() -> list[dict]:
                         for ev in res.evidence
                     ],
                     "retrieval": {
-                        "hits": [
-                            {"record_id": hit.record_id, "score": hit.score}
-                            for hit in res.debug.get("raw_hits", [])
-                        ]
+                        "hits": hits_list
                     },
                     "latency_ms": latency_ms,
                 }
