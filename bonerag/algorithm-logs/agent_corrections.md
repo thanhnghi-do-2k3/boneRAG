@@ -16,6 +16,18 @@ Mỗi lần Agent phát hiện sai sót / sửa đổi thuật toán, một entr
 
 ## 📜 Nhật ký sửa đổi (Audit Entries):
 
+### [2026-08-04] Entry #005 - Triển khai Milestone 3: Anatomical Reranker, Hard Negative Mining & Evidence Gate
+- ⏱️ **Thời gian**: 2026-08-04T14:15:00Z
+- ❓ **Lý do sửa**: Cần hoàn thiện Milestone 3 nhằm nâng cao độ chính xác sắp xếp bằng chứng y khoa và từ chối các câu hỏi không thuộc miền ngữ cảnh X-quang.
+- 🔍 **Nguyên nhân lỗi**: Thuật toán Reranking cũ chỉ tính overlap từ đơn giản; Cổng từ chối cũ chưa tự động lọc các câu hỏi tổng quát phi y tế (out-of-domain).
+- 🛠️ **Những gì đã sửa**:
+  1. Tạo module [`bonerag/main_algo/reranker.py`](file:///Users/nghidothanh/Documents/School/TGMT/BoneRAG/bonerag/main_algo/reranker.py) kết hợp Cosine Similarity, Anatomical Alignment, Pathology Matching và phạt điểm Hard Negative.
+  2. Tạo module [`bonerag/main_algo/gating.py`](file:///Users/nghidothanh/Documents/School/TGMT/BoneRAG/bonerag/main_algo/gating.py) kiểm duyệt ngưỡng an toàn và lọc Out-of-Domain.
+  3. Bổ sung bộ unit test [`test_milestone3_rerank_gate.py`](file:///Users/nghidothanh/Documents/School/TGMT/BoneRAG/bonerag/tests/test_milestone3_rerank_gate.py).
+- ✅ **Kết quả thu được**: Pass 100% 10 unit tests, Benchmark đạt Diagnosis Accuracy = 100%, Faithfulness = 75%, Latency giảm xuống **67.25 ms**.
+
+---
+
 ### [2026-08-04] Entry #004 - Sửa thuật toán trích xuất Parent ID trong Benchmark Suite
 - ⏱️ **Thời gian**: 2026-08-04T13:50:00Z
 - ❓ **Lý do sửa**: Lần đầu chạy `run_benchmark.py`, chỉ số Recall@4 và MRR bị trả về `0.0000`.

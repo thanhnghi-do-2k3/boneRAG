@@ -17,7 +17,9 @@ from typing import Iterator
 
 from .data import ImageRecord, SAMPLE_RECORDS
 from .encoder import BaseMultimodalEncoder, get_multimodal_encoder
+from .gating import EvidenceGate, GateDecision
 from .generator import AVAILABLE_GENERATORS, BaseGenerator, TemplateGenerator, get_generator
+from .reranker import AnatomicalReranker
 from .vector_index import FAISSVectorIndex, InMemoryVectorIndex, SearchHit, get_vector_index
 
 
@@ -101,6 +103,8 @@ class BoneRAGPipeline:
             self.records = records or SAMPLE_RECORDS
 
         self.record_by_id = {record.image_id: record for record in self.records}
+        self.reranker = AnatomicalReranker()
+        self.gate = EvidenceGate(min_similarity=self.min_similarity)
         self.index = self._build_index()
 
     def _build_index(self) -> InMemoryVectorIndex | FAISSVectorIndex:
@@ -208,86 +212,13 @@ class BoneRAGPipeline:
         return merged_hits[: self.top_k]
 
     def should_retrieve(self, question: str, hits: list[SearchHit], has_image: bool = False) -> bool:
-        """Gate delta: skip evidence when the question is not image/medical specific."""
-
-        if not hits:
-            return False
-
-        if has_image:
-            return True
-
-        lower_q = question.lower()
-        if "selected image context:" in lower_q or "image_id:" in lower_q:
-            return True
-
-        question_tokens = set(self.encoder.tokenize(question)) if hasattr(self.encoder, "tokenize") else set(lower_q.split())
-        medical_terms = {
-            "xray",
-            "x",
-            "ray",
-            "bone",
-            "fracture",
-            "gãy",
-            "xương",
-            "wrist",
-            "hand",
-            "hip",
-            "tibia",
-            "radius",
-            "lesion",
-            "tumor",
-            "bệnh",
-            "ảnh",
-            "bị",
-            "gì",
-            "thế",
-            "chẩn",
-            "đoán",
-            "tổn",
-            "thương",
-            "vùng",
-            "khớp",
-            "xem",
-            "này",
-        }
-        return bool(question_tokens & medical_terms) and hits[0].score >= self.min_similarity
+        """Gate delta: evaluate adaptive evidence gating decision."""
+        decision = self.gate.evaluate_hits(question, hits, has_image=has_image)
+        return decision.passed
 
     def rerank(self, question: str, hits: list[SearchHit]) -> list[Evidence]:
-        """Light reranker phi: combine vector score with metadata keyword matches."""
-
-        tokens = set(self.encoder.tokenize(question)) if hasattr(self.encoder, "tokenize") else set(question.lower().split())
-        evidence: list[Evidence] = []
-        for hit in hits:
-            record = self.record_by_id[hit.record_id]
-            tokenize_fn = getattr(self.encoder, "tokenize", lambda s: s.lower().split())
-            metadata_terms = {
-                *tokenize_fn(record.title),
-                *tokenize_fn(record.body_part),
-                *tokenize_fn(record.diagnosis),
-                *tokenize_fn(record.region),
-                *tokenize_fn(record.evidence_note),
-            }
-            overlap = len(tokens & metadata_terms)
-            rerank_score = hit.score + (0.05 * overlap)
-            evidence.append(
-                Evidence(
-                    image_id=record.image_id,
-                    image_path=record.image_path,
-                    image_width=record.image_width,
-                    image_height=record.image_height,
-                    fracture_boxes=record.fracture_boxes,
-                    title=record.title,
-                    body_part=record.body_part,
-                    diagnosis=record.diagnosis,
-                    fracture_type=record.fracture_type,
-                    region=record.region,
-                    evidence_note=record.evidence_note,
-                    retrieval_score=hit.score,
-                    rerank_score=rerank_score,
-                )
-            )
-        evidence.sort(key=lambda item: item.rerank_score, reverse=True)
-        return evidence
+        """Anatomical & Pathology Cross-Attribute Reranking with Hard Negative Mining."""
+        return self.reranker.rerank_records(question, hits, self.record_by_id, top_k=self.top_k)
 
     def generate_answer(self, question: str, evidence: list[Evidence], used_retrieval: bool) -> str:
         """Call answer generator layer to construct final natural-language response."""
