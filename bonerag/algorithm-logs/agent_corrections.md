@@ -16,6 +16,17 @@ Mỗi lần Agent phát hiện sai sót / sửa đổi thuật toán, một entr
 
 ## 📜 Nhật ký sửa đổi (Audit Entries):
 
+### [2026-08-04] Entry #010 - Triển khai Multi-Generator Matrix Benchmark CLI (--generator all, --cases N)
+- ⏱️ **Thời gian**: 2026-08-04T14:43:00Z
+- ❓ **Lý do sửa**: Giải đáp thắc mắc người dùng về việc khởi chạy benchmark đầy đủ cả 4 mô hình Generator (`Local Synthesizer`, `Qwen2.5-0.5B`, `Qwen2.5-1.5B`, `SmolLM2-1.7B`) và mở rộng quy mô tập test case.
+- 🔍 **Nguyên nhân lỗi**: CLI cũ chỉ chạy 1 generator mặc định và cố định số lượng test case.
+- 🛠️ **Những gì đã sửa**:
+  1. Cập nhật [`bonerag/evaluation/run_benchmark.py`](file:///Users/nghidothanh/Documents/School/TGMT/BoneRAG/bonerag/evaluation/run_benchmark.py) bổ sung cờ `--generator {synth,qwen05,qwen15,smol,all}` và `--cases <count>`.
+  2. Xác minh kho dữ liệu [`bonerag/main_algo/data.py`](file:///Users/nghidothanh/Documents/School/TGMT/BoneRAG/bonerag/main_algo/data.py) đang lưu trữ **120 ảnh X-quang y khoa FracAtlas**.
+- ✅ **Kết quả thu được**: Hệ thống linh hoạt cho phép người dùng chạy Benchmark toàn bộ 4 mô hình Generator hoặc mở rộng quy mô tùy ý.
+
+---
+
 ### [2026-08-04] Entry #009 - Làm rõ Sự khác biệt giữa Pure Evidence Synthesizer (~65ms) vs Real Neural SLM (Qwen2.5-0.5B / 1.5B)
 - ⏱️ **Thời gian**: 2026-08-04T14:41:00Z
 - ❓ **Lý do sửa**: Người dùng thắc mắc về tính trung thực của Benchmark khi thời gian chạy 65ms quá nhanh so với các mô hình Foundation LLM nặng thật sự.
