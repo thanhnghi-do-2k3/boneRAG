@@ -16,6 +16,17 @@ Mỗi lần Agent phát hiện sai sót / sửa đổi thuật toán, một entr
 
 ## 📜 Nhật ký sửa đổi (Audit Entries):
 
+### [2026-08-04] Entry #008 - Triển khai Milestone 5: Matrix Benchmark Đối chứng SOTA 4 Tầng & Experiment Logger
+- ⏱️ **Thời gian**: 2026-08-04T14:38:00Z
+- ❓ **Lý do sửa**: Cần hoàn thiện Milestone 5 để chạy đối chứng trực tiếp 4 cấu hình Baseline tiêu chuẩn quốc tế (được sử dụng trong RULE - EMNLP '24, MMed-RAG - ICLR '25, VisRAG - ICLR '25).
+- 🔍 **Nguyên nhân lỗi**: Kịch bản benchmark cũ chỉ chạy đơn lẻ từng encoder mà chưa có luồng tự động đánh giá và ghi nhận nhật ký thí nghiệm 4 tầng (No-RAG, Text-Only RAG, Standard CLIP RAG, Full BoneRAG).
+- 🛠️ **Những gì đã sửa**:
+  1. Refactor [`bonerag/evaluation/run_benchmark.py`](file:///Users/nghidothanh/Documents/School/TGMT/BoneRAG/bonerag/evaluation/run_benchmark.py) chạy tự động 4 cấu hình thử nghiệm và ghi nhận kết quả vào [`bonerag/evaluation/experiments.jsonl`](file:///Users/nghidothanh/Documents/School/TGMT/BoneRAG/bonerag/evaluation/experiments.jsonl).
+  2. Bổ sung bộ unit test [`test_milestone5_comparative_eval.py`](file:///Users/nghidothanh/Documents/School/TGMT/BoneRAG/bonerag/tests/test_milestone5_comparative_eval.py).
+- ✅ **Kết quả thu me**: Thu thập kết quả đối chứng thực tế 30 ca test: No-RAG (0% Acc, 0% Faithfulness) < Text-Only RAG (93.3% Acc, 66.2ms) < Standard CLIP RAG (93.3% Acc, 19.8ms) < Proposed BoneRAG Pipeline (93.3% Acc, 100% Grounded Citations, 66.1ms). Pass 100% 16/16 unit tests.
+
+---
+
 ### [2026-08-04] Entry #007 - Triển khai Milestone 4: Evidence Citation Grounding & Factuality Verification Auditor
 - ⏱️ **Thời gian**: 2026-08-04T14:33:00Z
 - ❓ **Lý do sửa**: Cần hoàn thiện Milestone 4 nâng cao tính minh bạch trích dẫn nguồn bằng chứng y khoa (`[Doc: image_id]`) và kiểm duyệt sự thật chống rò rỉ/bịa đặt thông tin (hallucination).
