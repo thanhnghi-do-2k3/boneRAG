@@ -15,8 +15,10 @@ from dataclasses import asdict, dataclass
 from pathlib import Path
 from typing import Iterator
 
+from .citation_synthesizer import EvidenceCitationSynthesizer
 from .data import ImageRecord, SAMPLE_RECORDS
 from .encoder import BaseMultimodalEncoder, get_multimodal_encoder
+from .factuality import FactualityAuditor
 from .gating import EvidenceGate, GateDecision
 from .generator import AVAILABLE_GENERATORS, BaseGenerator, TemplateGenerator, get_generator
 from .reranker import AnatomicalReranker
@@ -105,6 +107,8 @@ class BoneRAGPipeline:
         self.record_by_id = {record.image_id: record for record in self.records}
         self.reranker = AnatomicalReranker()
         self.gate = EvidenceGate(min_similarity=self.min_similarity)
+        self.citation_formatter = EvidenceCitationSynthesizer()
+        self.factuality_auditor = FactualityAuditor()
         self.index = self._build_index()
 
     def _build_index(self) -> InMemoryVectorIndex | FAISSVectorIndex:
@@ -221,8 +225,11 @@ class BoneRAGPipeline:
         return self.reranker.rerank_records(question, hits, self.record_by_id, top_k=self.top_k)
 
     def generate_answer(self, question: str, evidence: list[Evidence], used_retrieval: bool) -> str:
-        """Call answer generator layer to construct final natural-language response."""
-        return self.generator.generate(question, evidence, used_retrieval=used_retrieval)
+        """Call answer generator layer and attach structured evidence citations."""
+        raw_answer = self.generator.generate(question, evidence, used_retrieval=used_retrieval)
+        if not used_retrieval or not evidence:
+            return raw_answer
+        return self.citation_formatter.attach_inline_citations(raw_answer, evidence)
 
     def answer(self, question: str) -> PipelineResult:
         """Run the full Baseline contract: q -> answer + evidence."""
