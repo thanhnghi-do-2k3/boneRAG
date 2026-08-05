@@ -1,0 +1,29 @@
+name: Sync to Hugging Face Spaces
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+jobs:
+  sync-to-hub:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Push to Hugging Face Space
+        env:
+          HF_TOKEN: ${{ secrets.HF_TOKEN }}
+          HF_SPACE_NAME: ${{ secrets.HF_SPACE_NAME }}
+        run: |
+          if [ -z "$HF_TOKEN" ] || [ -z "$HF_SPACE_NAME" ]; then
+            echo "⚠️ HF_TOKEN or HF_SPACE_NAME secret is missing. Skipping HF sync."
+            exit 0
+          fi
+          git config --global user.email "ci-bot@bonerag.ai"
+          git config --global user.name "BoneRAG CI/CD Bot"
+          git remote add hf https://user:$HF_TOKEN@huggingface.co/spaces/$HF_SPACE_NAME
+          git push --force hf main

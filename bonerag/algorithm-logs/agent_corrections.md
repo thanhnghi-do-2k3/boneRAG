@@ -16,6 +16,19 @@ Mỗi lần Agent phát hiện sai sót / sửa đổi thuật toán, một entr
 
 ## 📜 Nhật ký sửa đổi (Audit Entries):
 
+### [2026-08-05] Entry #013 - Xây dựng Hệ thống Tự động hóa CI/CD Deploy Full-Flow (Hugging Face + Vercel)
+- ⏱️ **Thời gian**: 2026-08-05T23:00:00Z
+- ❓ **Lý do sửa**: Đưa hệ thống BoneRAG lên hạ tầng Cloud miễn phí 100% với kiến trúc tách biệt Decoupled Frontend/Backend và tự động hóa CI/CD.
+- 🔍 **Nguyên nhân cần thiết**: Cần một môi trường máy chủ công khai hoạt động 24/7 để trình chiếu Web App và chạy API không phụ thuộc máy local.
+- 🛠️ **Những gì đã sửa**:
+  1. Tạo [`Dockerfile`](file:///Users/nghidothanh/Documents/School/TGMT/BoneRAG/Dockerfile) chuẩn hóa môi trường Python 3.12, PyTorch và RAG Server cho Hugging Face Spaces.
+  2. Tạo GitHub Action CI/CD Workflow [`deploy-hf.yml`](file:///Users/nghidothanh/Documents/School/TGMT/BoneRAG/.github/workflows/deploy-hf.yml) tự động đồng bộ code sang Hugging Face.
+  3. Cập nhật [`boneragApi.js`](file:///Users/nghidothanh/Documents/School/TGMT/BoneRAG/demo-app/frontend/src/services/boneragApi.js) và [`vercel.json`](file:///Users/nghidothanh/Documents/School/TGMT/BoneRAG/vercel.json) để hỗ trợ biến môi trường `VITE_API_BASE_URL` khi host Frontend trên Vercel.
+  4. Viết file mẫu cấu hình [`.env.example`](file:///Users/nghidothanh/Documents/School/TGMT/BoneRAG/.env.example) và tài liệu hướng dẫn chi tiết [`DEPLOYMENT_GUIDE.md`](file:///Users/nghidothanh/Documents/School/TGMT/BoneRAG/DEPLOYMENT_GUIDE.md).
+- ✅ **Kết quả thu me**: Hệ thống sẵn sàng 100% cho việc tự động deploy miễn phí chỉ bằng lệnh `git push`.
+
+---
+
 ### [2026-08-05] Entry #012 - Sửa lỗi Mất câu trả lời trên Web UI do Disconnect SSE Stream (Fail-safe REST Fallback)
 - ⏱️ **Thời gian**: 2026-08-05T22:52:00Z
 - ❓ **Lý do sửa**: Khắc phục hiện tượng người dùng gửi câu hỏi với Generator `BoneRAG Evidence Synthesizer` nhưng câu trả lời không xuất hiện trên giao diện Web.
