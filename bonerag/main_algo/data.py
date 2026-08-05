@@ -40,21 +40,36 @@ def _discover_dataset_images_root() -> Path | None:
 
     Priority:
     1. BONERAG_DATASET_IMAGES_ROOT env var
-    2. Common sibling folder next to this repository (../TH-P2/...)
+    2. Colab paths (/content/fracatlas_repo, /content/FracAtlas, etc.)
+    3. Local repo data paths (./data/FracAtlas, ../TH-P2/...)
     """
 
     env_path = os.environ.get("BONERAG_DATASET_IMAGES_ROOT", "").strip()
+    candidates = []
     if env_path:
-        candidate = Path(env_path).expanduser().resolve()
-        if candidate.exists() and candidate.is_dir():
-            return candidate
+        candidates.append(Path(env_path).expanduser().resolve())
 
     repo_root = Path(__file__).resolve().parents[2]
-    default_candidate = (repo_root.parent / "TH-P2" / "segmentation" / "dataset" / "images").resolve()
-    if default_candidate.exists() and default_candidate.is_dir():
-        return default_candidate
+    candidates.extend([
+        Path("/content/fracatlas_repo/images"),
+        Path("/content/fracatlas_repo"),
+        Path("/content/FracAtlas/images"),
+        Path("/content/FracAtlas"),
+        repo_root / "data" / "FracAtlas" / "images",
+        repo_root / "data" / "FracAtlas",
+        repo_root / "data" / "images",
+        (repo_root.parent / "TH-P2" / "segmentation" / "dataset" / "images").resolve(),
+    ])
+
+    for candidate in candidates:
+        if candidate.exists() and candidate.is_dir():
+            if (candidate / "Fractured").is_dir() or (candidate / "Non_fractured").is_dir():
+                return candidate
+            if (candidate / "images" / "Fractured").is_dir() or (candidate / "images" / "Non_fractured").is_dir():
+                return candidate / "images"
 
     return None
+
 
 
 def _load_fracture_annotations(images_root: Path) -> dict[str, dict[str, object]]:
