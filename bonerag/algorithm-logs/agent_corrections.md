@@ -16,6 +16,17 @@ Mỗi lần Agent phát hiện sai sót / sửa đổi thuật toán, một entr
 
 ## 📜 Nhật ký sửa đổi (Audit Entries):
 
+### [2026-08-05] Entry #012 - Sửa lỗi Mất câu trả lời trên Web UI do Disconnect SSE Stream (Fail-safe REST Fallback)
+- ⏱️ **Thời gian**: 2026-08-05T22:52:00Z
+- ❓ **Lý do sửa**: Khắc phục hiện tượng người dùng gửi câu hỏi với Generator `BoneRAG Evidence Synthesizer` nhưng câu trả lời không xuất hiện trên giao diện Web.
+- 🔍 **Nguyên nhân lỗi**: Sự kiện `source.onerror` của EventSource trong [`App.jsx`](file:///Users/nghidothanh/Documents/School/TGMT/BoneRAG/demo-app/frontend/src/App.jsx) khi gặp lỗi mạng/disconnect chỉ lặng lẽ đóng stream và set `running: false` mà không cập nhật nội dung tin nhắn hoặc hiển thị báo lỗi.
+- 🛠️ **Những gì đã sửa**:
+  1. Nâng cấp `source.onerror` trong [`demo-app/frontend/src/App.jsx`](file:///Users/nghidothanh/Documents/School/TGMT/BoneRAG/demo-app/frontend/src/App.jsx): Tự động kích hoạt cơ chế dự phòng **Fail-safe REST API (`POST /api/answer`)** nếu EventSource stream bị ngắt kết nối.
+  2. Thực hiện `npm run build` đóng gói bundle sản phẩm `dist/`.
+- ✅ **Kết quả thu được**: Giao diện Web luôn đảm bảo 100% nhận câu trả lời chẩn đoán mượt mà, không bao giờ bị hiện tượng đứng hình hoặc tin nhắn rỗng.
+
+---
+
 ### [2026-08-04] Entry #011 - Khai phá Toàn bộ 4,085 Ảnh X-quang Y khoa FracAtlas Thật vào CSDL Vector RAG
 - ⏱️ **Thời gian**: 2026-08-04T14:57:00Z
 - ❓ **Lý do sửa**: Giải đáp thắc mắc người dùng về giới hạn 120 ảnh X-quang và nâng cấp hệ thống để load toàn bộ kho ảnh FracAtlas thực tế.

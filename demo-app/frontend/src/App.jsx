@@ -153,8 +153,29 @@ export function App() {
     };
 
     source.onerror = () => {
-      dispatch({ type: 'set-running', running: false });
       source.close();
+      const targetId = assistantIdRef.current;
+      // Fallback: If streaming disconnects, fetch answer via POST /api/answer
+      fetch('/api/answer', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ question: pipelineQuestion }),
+      })
+        .then((r) => r.json())
+        .then((data) => {
+          if (data && data.answer) {
+            const displayResult = {
+              ...data,
+              question: trimmed,
+            };
+            dispatch({ type: 'stream-done', messageId: targetId, result: displayResult, history: state.history });
+          } else {
+            dispatch({ type: 'stream-error', messageId: targetId, message: '⚠️ Lỗi kết nối máy chủ. Vui lòng thử lại!' });
+          }
+        })
+        .catch(() => {
+          dispatch({ type: 'stream-error', messageId: targetId, message: '⚠️ Lỗi kết nối mạng. Vui lòng thử lại!' });
+        });
     };
   }
 
