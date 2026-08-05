@@ -1,5 +1,10 @@
 const API_BASE = (import.meta.env.VITE_API_BASE_URL || '').replace(/\/+$/, '');
 
+const DEFAULT_HEADERS = {
+  'Bypass-Tunnel-Remainder': 'true',
+  'ngrok-skip-browser-warning': 'true',
+};
+
 export function resolveImageUrl(url) {
   if (!url) return null;
   if (url.startsWith('data:') || url.startsWith('http://') || url.startsWith('https://')) {
@@ -9,7 +14,7 @@ export function resolveImageUrl(url) {
 }
 
 export function fetchRecords() {
-  return fetch(`${API_BASE}/api/records`)
+  return fetch(`${API_BASE}/api/records`, { headers: DEFAULT_HEADERS })
     .then((r) => r.json())
     .then((items) =>
       Array.isArray(items)
@@ -30,13 +35,13 @@ export function openAnswerStream(question, { sessionId, questionRaw, attachedIma
 }
 
 export function fetchModelConfigs() {
-  return fetch(`${API_BASE}/api/model-configs`).then((r) => r.json());
+  return fetch(`${API_BASE}/api/model-configs`, { headers: DEFAULT_HEADERS }).then((r) => r.json());
 }
 
 export function setModelConfig(config) {
   return fetch(`${API_BASE}/api/set-config`, {
     method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
+    headers: { 'Content-Type': 'application/json', ...DEFAULT_HEADERS },
     body: JSON.stringify(config),
   }).then((r) => r.json());
 }
@@ -44,11 +49,11 @@ export function setModelConfig(config) {
 export function postFeedback(sessionId, rating) {
   return fetch(`${API_BASE}/api/feedback`, {
     method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
+    headers: { 'Content-Type': 'application/json', ...DEFAULT_HEADERS },
     body: JSON.stringify({ session_id: sessionId, rating }),
   }).then((r) => r.json());
 }
 
 export function fetchSessions() {
-  return fetch(`${API_BASE}/api/sessions`).then((r) => r.json());
+  return fetch(`${API_BASE}/api/sessions`, { headers: DEFAULT_HEADERS }).then((r) => r.json());
 }
