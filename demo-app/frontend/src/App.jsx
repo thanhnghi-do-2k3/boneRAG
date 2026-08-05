@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useReducer, useRef, useState } from 'react';
 import { Sidebar } from './components/Sidebar';
 import { ModelSelector } from './components/ModelSelector';
-import { fetchRecords, openAnswerStream, resolveImageUrl } from './services/boneragApi';
+import { fetchRecords, openAnswerStream, resolveImageUrl, postAnswer } from './services/boneragApi';
 import { buildExportPayload, clearStoredHistory, persistHistorySession } from './services/historyStorage';
 import { chatReducer, initialChatState, makeSessionId } from './state/chatReducer';
 import { fallbackSampleRecords } from './data/demoContent';
@@ -168,19 +168,10 @@ export function App() {
       source.close();
       const targetId = assistantIdRef.current;
       // Fallback: If streaming disconnects, fetch answer via POST /api/answer
-      fetch('/api/answer', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ question: pipelineQuestion }),
-      })
-        .then((r) => r.json())
+      postAnswer(pipelineQuestion)
         .then((data) => {
           if (data && data.answer) {
-            const displayResult = {
-              ...data,
-              question: trimmed,
-            };
-            dispatch({ type: 'stream-done', messageId: targetId, result: displayResult, history: state.history });
+            dispatch({ type: 'stream-done', messageId: targetId, result: { ...data, question: trimmed }, history: state.history });
           } else {
             dispatch({ type: 'stream-error', messageId: targetId, message: '⚠️ Lỗi kết nối máy chủ. Vui lòng thử lại!' });
           }

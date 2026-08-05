@@ -56,6 +56,8 @@ export function openAnswerStream(question, { sessionId, questionRaw, attachedIma
   if (sessionId) params.set('session_id', sessionId);
   if (questionRaw) params.set('question_raw', questionRaw);
   if (attachedImage) params.set('attached_image', JSON.stringify(attachedImage));
+  // ngrok / localtunnel bypass via query param (EventSource cannot send headers)
+  params.set('ngrok-skip-browser-warning', 'true');
   const url = `${API_BASE}/api/answer-stream?${params.toString()}`;
   console.log(`[BoneRAG API] 🔵 SSE OPEN ${url}`);
   return new EventSource(url);
@@ -85,3 +87,10 @@ export function fetchSessions() {
   return apiFetch('/api/sessions').then((r) => r.json());
 }
 
+export function postAnswer(question) {
+  return apiFetch('/api/answer', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', ...DEFAULT_HEADERS },
+    body: JSON.stringify({ question }),
+  }).then((r) => r.json());
+}

@@ -23,53 +23,63 @@ export function ImageLibraryScreen({ records, selectedImage, onSelectImage }) {
   }
 
   async function copyRecordImage(record) {
+    const url = record.image_url || record.data_url;
+
+    // Attempt 1: Try clipboard API with canvas
     try {
-      const url = record.image_url || record.data_url;
       const canvas = document.createElement('canvas');
-      canvas.width = 400;
-      canvas.height = 300;
       const ctx = canvas.getContext('2d');
 
       if (url) {
-        const img = new Image();
-        img.crossOrigin = 'anonymous';
-        await new Promise((resolve, reject) => {
-          img.onload = resolve;
-          img.onerror = () => reject(new Error('Failed to load image'));
-          img.src = url;
-        });
-        canvas.width = img.naturalWidth || 400;
-        canvas.height = img.naturalHeight || 300;
-        ctx.drawImage(img, 0, 0);
+        // Fetch image as blob through API to avoid CORS tainting
+        const res = await fetch(url, { headers: { 'ngrok-skip-browser-warning': 'true', 'Bypass-Tunnel-Remainder': 'true' } });
+        const blob = await res.blob();
+        const bmp = await createImageBitmap(blob);
+        canvas.width = bmp.width;
+        canvas.height = bmp.height;
+        ctx.drawImage(bmp, 0, 0);
       } else {
+        canvas.width = 400; canvas.height = 300;
         ctx.fillStyle = '#1e293b';
         ctx.fillRect(0, 0, 400, 300);
-        ctx.fillStyle = '#94a3b8';
-        ctx.font = '16px sans-serif';
-        ctx.fillText(record.body_part || 'X-ray', 20, 40);
         ctx.fillStyle = '#f8fafc';
         ctx.font = 'bold 20px sans-serif';
-        ctx.fillText(record.diagnosis || record.title || 'Bone Image', 20, 80);
+        ctx.fillText(record.title || 'X-ray', 20, 60);
       }
 
-      const blob = await new Promise((resolve) => canvas.toBlob(resolve, 'image/png'));
-      if (!blob) throw new Error('Could not create PNG blob');
+      const pngBlob = await new Promise((resolve) => canvas.toBlob(resolve, 'image/png'));
+      if (!pngBlob) throw new Error('blob null');
 
-      if (!navigator.clipboard?.write) {
-        throw new Error('Clipboard write API not available');
+      if (!navigator.clipboard?.write) throw new Error('No clipboard.write');
+      await navigator.clipboard.write([new ClipboardItem({ [pngBlob.type]: pngBlob })]);
+      setToast({ type: 'success', message: '✅ Đã copy ảnh vào clipboard!' });
+      return;
+    } catch (_clipboardErr) {
+      // Clipboard blocked — fall through to download
+    }
+
+    // Attempt 2: Download ảnh trực tiếp xuống máy
+    try {
+      if (url) {
+        const res = await fetch(url, { headers: { 'ngrok-skip-browser-warning': 'true', 'Bypass-Tunnel-Remainder': 'true' } });
+        const blob = await res.blob();
+        const a = document.createElement('a');
+        a.href = URL.createObjectURL(blob);
+        a.download = `${record.image_id || 'xray'}.jpg`;
+        a.click();
+        URL.revokeObjectURL(a.href);
+        setToast({ type: 'success', message: '⬇️ Clipboard bị chặn — đã tải ảnh xuống máy!' });
+      } else {
+        // No URL — copy description as text
+        await navigator.clipboard.writeText(`${record.image_id}: ${record.title}. ${record.evidence_note}`);
+        setToast({ type: 'success', message: '📋 Đã copy mô tả (không có ảnh URL).' });
       }
-
-      await navigator.clipboard.write([
-        new ClipboardItem({
-          [blob.type]: blob,
-        }),
-      ]);
-      setToast({ type: 'success', message: 'Đã copy ảnh vào clipboard!' });
-    } catch (err) {
-      console.error('Copy image error:', err);
-      setToast({ type: 'error', message: 'Không thể copy ảnh. Trình duyệt đang chặn clipboard.' });
+    } catch (finalErr) {
+      console.error('Copy/Download image error:', finalErr);
+      setToast({ type: 'error', message: '❌ Không thể copy hoặc tải ảnh. Kiểm tra console.' });
     }
   }
+
 
   return (
     <section className="screen">
