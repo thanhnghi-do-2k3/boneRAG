@@ -397,10 +397,14 @@ class BoneRAGHandler(BaseHTTPRequestHandler):
                 yield event
                 continue
 
-            if event.get("type") == "stage" and "hits" in event:
-                collected_hits = event.get("hits", [])
-
-            if event.get("type") == "done" and isinstance(event.get("result"), dict):
+            evt_type = event.get("type")
+            if evt_type == "stage":
+                if "hits" in event:
+                    collected_hits = event.get("hits", [])
+                yield event
+            elif evt_type == "token":
+                yield event
+            elif evt_type == "done" and isinstance(event.get("result"), dict):
                 public_result = self._result_to_public_payload(event["result"])
                 final_result = public_result
                 final_answer = public_result.get("answer", "")
