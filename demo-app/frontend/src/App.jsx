@@ -1,9 +1,10 @@
 import { useEffect, useMemo, useReducer, useRef, useState } from 'react';
 import { Sidebar } from './components/Sidebar';
 import { ModelSelector } from './components/ModelSelector';
-import { fetchRecords, openAnswerStream } from './services/boneragApi';
+import { fetchRecords, openAnswerStream, resolveImageUrl } from './services/boneragApi';
 import { buildExportPayload, clearStoredHistory, persistHistorySession } from './services/historyStorage';
 import { chatReducer, initialChatState, makeSessionId } from './state/chatReducer';
+import { fallbackSampleRecords } from './data/demoContent';
 import { EvaluationScreen } from './views/EvaluationScreen';
 import { HistoryScreen } from './views/HistoryScreen';
 import { ImageLibraryScreen } from './views/ImageLibraryScreen';
@@ -21,9 +22,20 @@ export function App() {
   const [drawerWidth, setDrawerWidth] = useState(460);
 
   useEffect(() => {
+    const fallbackFormatted = fallbackSampleRecords.map((r) => ({
+      ...r,
+      image_url: resolveImageUrl(r.image_url),
+    }));
+
     fetchRecords()
-      .then((records) => dispatch({ type: 'records-loaded', records }))
-      .catch(() => dispatch({ type: 'records-loaded', records: [] }));
+      .then((records) => {
+        if (Array.isArray(records) && records.length > 0) {
+          dispatch({ type: 'records-loaded', records });
+        } else {
+          dispatch({ type: 'records-loaded', records: fallbackFormatted });
+        }
+      })
+      .catch(() => dispatch({ type: 'records-loaded', records: fallbackFormatted }));
 
     return () => eventSourceRef.current?.close();
   }, []);
