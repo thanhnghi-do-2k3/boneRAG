@@ -1,49 +1,44 @@
 # 🚀 Hướng dẫn Triển khai Tự động CI/CD (Deploy BoneRAG Miễn phí 100%)
 
-Tài liệu này hướng dẫn cách đưa dự án **BoneRAG** lên môi trường Internet công khai với kiến trúc tách biệt (**Decoupled Frontend & Backend**), tự động cập nhật khi push code lên GitHub.
+Tài liệu này hướng dẫn cách đưa dự án **BoneRAG** lên môi trường Internet công khai hoàn toàn **MIỄN PHÍ 100%** (không cần thẻ tín dụng, không cần Pro subscription).
 
 ---
 
-## 🏗️ Tổng quan Kiến trúc
+## 🏗️ Kiến trúc Deploy Miễn phí 100%:
 
-* **Backend AI Engine:** Deploy trên **Hugging Face Spaces** (Docker SDK).
-* **Frontend Web App:** Deploy trên **Vercel** (Vite + React).
-* **Tự động hóa CI/CD:** Sử dụng **GitHub Actions** tự động đồng bộ code.
-
----
-
-## 🛠️ Bước 1: Khởi tạo Hugging Face Space (Backend)
-
-1. Truy cập [huggingface.co/new-space](https://huggingface.co/new-space).
-2. Đặt tên Space: Ví dụ `boneRAG-backend`.
-3. Chọn **SDK: Docker** -> Chọn **Blank / Plain Docker**.
-4. Chọn tính năng **Public**.
-5. Nhấn **Create Space**.
+```mermaid
+graph LR
+    A["🐱 GitHub Repository<br/>(thanhnghi-do-2k3/boneRAG)"] -->|1. Auto Deploy Docker| B["🟢 Render.com (Free Tier)<br/>(Backend AI Engine API)"]
+    A -->|2. Auto Build React| C["⚡ Vercel / Netlify (Free Tier)<br/>(Frontend Web UI App)"]
+    C -- "3. Cross-Origin API" --> B
+```
 
 ---
 
-## 🔑 Bước 2: Thiết lập GitHub Secrets cho CI/CD
+## 🛠️ Bước 1: Deploy Backend AI Engine trên Render.com (Miễn phí 100%)
 
-1. Truy cập **Hugging Face Token**: [huggingface.co/settings/tokens](https://huggingface.co/settings/tokens) -> Tạo token mới với quyền **WRITE**.
-2. Trên kho GitHub dự án của bạn (`https://github.com/thanhnghi-do-2k3/boneRAG`):
-   * Vào **Settings** -> **Secrets and variables** -> **Actions**.
-   * Nhấn **New repository secret**:
-     * `HF_TOKEN`: dán token vừa tạo ở Hugging Face.
-     * `HF_SPACE_NAME`: dán ID Space của bạn (Ví dụ: `thanhnghi-do-2k3/boneRAG-backend`).
+1. Truy cập trang web miễn phí **[render.com](https://render.com)** -> Đăng nhập bằng tài khoản **GitHub**.
+2. Nhấn **New +** -> Chọn **Web Service**.
+3. Chọn repo GitHub **`thanhnghi-do-2k3/boneRAG`**.
+4. Render sẽ tự động nhận diện file **`render.yaml` / `Dockerfile`**:
+   * **Name:** `bonerag-backend`
+   * **Environment:** `Docker`
+   * **Instance Type:** `Free ($0/month)`
+5. Nhấn **Create Web Service**.
 
-👉 Từ bây giờ, mỗi khi bạn `git push` code lên GitHub, GitHub Action sẽ **tự động deploy backend sang Hugging Face**!
+👉 Bạn sẽ nhận được URL Backend API miễn phí công khai 24/7 dạng:
+`https://bonerag-backend.onrender.com`
 
 ---
 
-## 🌐 Bước 3: Deploy Frontend trên Vercel (Web UI)
+## 🌐 Bước 2: Deploy Frontend Web UI trên Vercel (Miễn phí 100%)
 
-1. Truy cập [vercel.com](https://vercel.com) và đăng nhập bằng tài khoản GitHub.
-2. Nhấn **Add New Project** -> Chọn kho repo `boneRAG`.
-3. Trong phần **Environment Variables**, thêm biến:
+1. Truy cập [vercel.com](https://vercel.com) -> Import repo `thanhnghi-do-2k3/boneRAG`.
+2. Trong phần **Environment Variables**, thêm biến:
    * **Key:** `VITE_API_BASE_URL`
-   * **Value:** `https://USERNAME-SPACE_NAME.hf.space` (Ví dụ: `https://thanhnghi-do-2k3-bonerag-backend.hf.space`).
-4. Nhấn **Deploy**.
+   * **Value:** `https://bonerag-backend.onrender.com` (Dán URL từ Render ở Bước 1).
+3. Nhấn **Deploy**.
 
 ---
 
-🎉 **Hoàn tất!** Bạn sẽ nhận được một đường link web chính thức (dạng `https://bonerag.vercel.app`) để truy cập từ bất kỳ đâu!
+🎉 **Hoàn tất!** Bạn nhận được đường link web chính thức (dạng `https://bonerag.vercel.app`) chạy trực tiếp 24/7 trên mạng hoàn toàn FREE 100%!
