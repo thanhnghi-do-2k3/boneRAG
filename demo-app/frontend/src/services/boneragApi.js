@@ -93,12 +93,20 @@ export function openAnswerStream(question, { sessionId, questionRaw, attachedIma
         const { done, value } = await reader.read();
         if (done || ctrl._aborted) break;
         buffer += decoder.decode(value, { stream: true });
-        const lines = buffer.split('\n');
-        buffer = lines.pop(); // keep incomplete last line
-        for (const line of lines) {
-          if (line.startsWith('data: ')) {
-            const data = line.slice(6).trim();
-            if (data) ctrl.onmessage?.({ data });
+        const blocks = buffer.split(/\r?\n\r?\n/);
+        buffer = blocks.pop() || '';
+        for (const block of blocks) {
+          for (const line of block.split(/\r?\n/)) {
+            if (line.startsWith('data: ')) {
+              const data = line.slice(6).trim();
+              if (data) {
+                try {
+                  ctrl.onmessage?.({ data });
+                } catch (e) {
+                  console.error('[BoneRAG SSE] Error in onmessage:', e);
+                }
+              }
+            }
           }
         }
       }

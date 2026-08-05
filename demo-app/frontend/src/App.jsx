@@ -105,7 +105,13 @@ export function App() {
     eventSourceRef.current = source;
 
     source.onmessage = (message) => {
-      const payload = JSON.parse(message.data);
+      let payload;
+      try {
+        payload = JSON.parse(message.data);
+      } catch (err) {
+        console.warn('[BoneRAG SSE] Invalid JSON data line:', message.data);
+        return;
+      }
       const targetId = assistantIdRef.current;
 
       if (payload.type === 'stage') {
