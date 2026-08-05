@@ -238,7 +238,7 @@ class BoneRAGHandler(BaseHTTPRequestHandler):
 
             try:
                 for event in events:
-                    raw = f"data: {json.dumps(event, ensure_ascii=False)}\n\n".encode("utf-8")
+                    raw = f"data: {json.dumps(event, ensure_ascii=False, default=str)}\n\n".encode("utf-8")
                     self.wfile.write(raw)
                     self.wfile.flush()
                     time.sleep(0.02)
@@ -570,19 +570,14 @@ class BoneRAGHandler(BaseHTTPRequestHandler):
                 self._send_sse([{"type": "error", "message": "question is required"}])
                 return
 
-            def event_generator():
-                yield {"type": "stage", "stage": "retrieving", "message": "🔍 Đang tìm kiếm ảnh tương tự trong FAISS index..."}
-                hits = pipeline.retrieve(question, image_data_url=image_data_url, image_input=image_input)
-                yield {"type": "stage", "stage": "retrieve-hits", "message": f"Truy xuất được {len(hits)} ứng viên", "hits": hits}
-                yield from self._public_stream_events(
-                    pipeline.answer_events(question, image_data_url=image_data_url, image_input=image_input),
-                    session_id=session_id,
-                    question_raw=question_raw,
-                    question_pipeline=question,
-                    attached_image=attached_image,
-                )
-
-            self._send_sse(event_generator())
+            events = self._public_stream_events(
+                pipeline.answer_events(question, image_data_url=image_data_url, image_input=image_input),
+                session_id=session_id,
+                question_raw=question_raw,
+                question_pipeline=question,
+                attached_image=attached_image,
+            )
+            self._send_sse(events)
             return
 
         if route == "/api/model-configs":
