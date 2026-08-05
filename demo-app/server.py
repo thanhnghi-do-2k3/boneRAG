@@ -209,7 +209,8 @@ class BoneRAGHandler(BaseHTTPRequestHandler):
         self.send_response(204)
         self.send_header("Access-Control-Allow-Origin", "*")
         self.send_header("Access-Control-Allow-Methods", "GET, POST, OPTIONS")
-        self.send_header("Access-Control-Allow-Headers", "Content-Type")
+        self.send_header("Access-Control-Allow-Headers", "*")
+        self.send_header("Access-Control-Max-Age", "86400")
         self.end_headers()
 
     # ------------------------------------------------------------------
