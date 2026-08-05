@@ -330,10 +330,37 @@ class BoneRAGHandler(BaseHTTPRequestHandler):
         pipeline = _get_pipeline()
         record = pipeline.record_by_id.get(image_id)
         if record and record.image_path:
-            image_path = Path(record.image_path).expanduser().resolve()
-            if image_path.exists() and image_path.is_file():
-                self._send_file(image_path)
-                return
+            raw_path = Path(record.image_path)
+            candidates = [
+                raw_path.expanduser().resolve(),
+                (WEB_ROOT.parent / raw_path).resolve(),
+                Path("/content") / raw_path,
+                Path("/content/fracatlas_repo") / raw_path.name,
+            ]
+            # Try subfolder matching (e.g. Fractured/IMG0001729.jpg or Non_fractured/IMG0001729.jpg)
+            if raw_path.parent.name:
+                candidates.extend([
+                    Path("/content/fracatlas_repo") / raw_path.parent.name / raw_path.name,
+                    Path("/content/fracatlas_repo/images") / raw_path.parent.name / raw_path.name,
+                    Path("/content/fracatlas_repo/FracAtlas/images") / raw_path.parent.name / raw_path.name,
+                ])
+            # Try _discover_dataset_images_root()
+            try:
+                from bonerag.main_algo.data import _discover_dataset_images_root
+                root = _discover_dataset_images_root()
+                if root:
+                    candidates.extend([
+                        root / raw_path.name,
+                        root / raw_path.parent.name / raw_path.name,
+                        root.parent / raw_path.name,
+                    ])
+            except Exception:
+                pass
+
+            for cand in candidates:
+                if cand.exists() and cand.is_file():
+                    self._send_file(cand)
+                    return
 
         # Fallback for sample/baseline records without local file path
         svg_bytes = self._generate_medical_xray_svg(record or type("Record", (), {"image_id": image_id})())
