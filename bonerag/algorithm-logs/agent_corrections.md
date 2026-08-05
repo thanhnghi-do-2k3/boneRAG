@@ -16,6 +16,18 @@ Mỗi lần Agent phát hiện sai sót / sửa đổi thuật toán, một entr
 
 ## 📜 Nhật ký sửa đổi (Audit Entries):
 
+### [2026-08-05] Entry #014 - Tái cấu trúc Thư mục Colab & Tạo Notebook Google Colab GPU Server Deploy
+- ⏱️ **Thời gian**: 2026-08-05T23:09:00Z
+- ❓ **Lý do sửa**: Dọn dẹp các notebook trùng lặp trong thư mục `colab/` và bổ sung Notebook khởi chạy GPU Server miễn phí trên Google Colab T4.
+- 🔍 **Nguyên nhân cần thiết**: Người dùng cần giải pháp chạy Server trên GPU NVIDIA T4 hoàn toàn miễn phí 100% để tăng tốc độ suy luận của mô hình LLM.
+- 🛠️ **Những gì đã sửa**:
+  1. Đổi tên notebook tạo embedding 5 mô hình thành [`01_FracAtlas_5Models_Embedding.ipynb`](file:///Users/nghidothanh/Documents/School/TGMT/BoneRAG/colab/01_FracAtlas_5Models_Embedding.ipynb).
+  2. Xóa bỏ 2 notebook cũ thừa trùng lặp (`FracAtlas_BiomedCLIP_Indexing.ipynb`, `FracAtlas_MultiModel_Indexing.ipynb`).
+  3. Khởi tạo notebook mới [`02_BoneRAG_GPU_Server_Deploy.ipynb`](file:///Users/nghidothanh/Documents/School/TGMT/BoneRAG/colab/02_BoneRAG_GPU_Server_Deploy.ipynb) tự động biến Google Colab T4 GPU thành Server Backend kết nối trực tiếp với Frontend Vercel Web App.
+- ✅ **Kết quả thu được**: Thư mục `colab/` gọn gàng chuẩn hóa với 2 file chuyên dụng cho Embedding và GPU Server Deploy.
+
+---
+
 ### [2026-08-05] Entry #013 - Xây dựng Hệ thống Tự động hóa CI/CD Deploy Full-Flow (Hugging Face + Vercel)
 - ⏱️ **Thời gian**: 2026-08-05T23:00:00Z
 - ❓ **Lý do sửa**: Đưa hệ thống BoneRAG lên hạ tầng Cloud miễn phí 100% với kiến trúc tách biệt Decoupled Frontend/Backend và tự động hóa CI/CD.
