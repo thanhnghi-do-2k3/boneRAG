@@ -1,5 +1,5 @@
 {
-  "buildCommand": "cd demo-app/frontend && npm run build",
+  "buildCommand": "cd demo-app/frontend && npm install && npm run build",
   "outputDirectory": "demo-app/frontend/dist",
   "framework": "vite",
   "rewrites": [
