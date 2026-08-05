@@ -51,17 +51,68 @@ export function fetchRecords() {
     });
 }
 
+/**
+ * Opens an SSE stream using fetch (not EventSource) so we can send
+ * custom headers (e.g. ngrok-skip-browser-warning) that EventSource
+ * does not support. Returns a controller object compatible with the
+ * EventSource-like interface App.jsx expects: { onmessage, onerror, close }.
+ */
 export function openAnswerStream(question, { sessionId, questionRaw, attachedImage } = {}) {
   const params = new URLSearchParams({ question });
   if (sessionId) params.set('session_id', sessionId);
   if (questionRaw) params.set('question_raw', questionRaw);
   if (attachedImage) params.set('attached_image', JSON.stringify(attachedImage));
-  // ngrok / localtunnel bypass via query param (EventSource cannot send headers)
-  params.set('ngrok-skip-browser-warning', 'true');
   const url = `${API_BASE}/api/answer-stream?${params.toString()}`;
-  console.log(`[BoneRAG API] 🔵 SSE OPEN ${url}`);
-  return new EventSource(url);
+  console.log(`[BoneRAG API] 🔵 SSE OPEN (fetch) ${url}`);
+
+  const ctrl = { onmessage: null, onerror: null, _aborted: false };
+  const abortController = new AbortController();
+
+  ctrl.close = () => {
+    ctrl._aborted = true;
+    abortController.abort();
+  };
+
+  (async () => {
+    try {
+      const res = await fetch(url, {
+        headers: { ...DEFAULT_HEADERS },
+        signal: abortController.signal,
+      });
+      logResponse(url, res);
+      if (!res.ok || !res.body) {
+        const text = await res.text().catch(() => '');
+        console.error('[BoneRAG API] SSE non-OK response body:', text.slice(0, 200));
+        ctrl.onerror?.({ message: `HTTP ${res.status}` });
+        return;
+      }
+      const reader = res.body.getReader();
+      const decoder = new TextDecoder();
+      let buffer = '';
+      while (true) {
+        const { done, value } = await reader.read();
+        if (done || ctrl._aborted) break;
+        buffer += decoder.decode(value, { stream: true });
+        const lines = buffer.split('\n');
+        buffer = lines.pop(); // keep incomplete last line
+        for (const line of lines) {
+          if (line.startsWith('data: ')) {
+            const data = line.slice(6).trim();
+            if (data) ctrl.onmessage?.({ data });
+          }
+        }
+      }
+    } catch (err) {
+      if (err.name !== 'AbortError') {
+        logError(url, err);
+        ctrl.onerror?.(err);
+      }
+    }
+  })();
+
+  return ctrl;
 }
+
 
 export function fetchModelConfigs() {
   return apiFetch('/api/model-configs').then((r) => r.json());
