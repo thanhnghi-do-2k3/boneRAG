@@ -146,11 +146,23 @@ def _get_pipeline(config: dict | None = None) -> BoneRAGPipeline:
             try:
                 encoder = get_multimodal_encoder(mode=encoder_name)
                 generator = get_generator(gen_name)
+
+                # Locate pre-computed FAISS index & metadata for full FracAtlas dataset (4,082 X-rays)
+                repo_root = Path(__file__).resolve().parents[1]
+                idx_name = "biomedclip" if "biomed" in encoder_name else ("clip_vitl14" if "l14" in encoder_name else "clip_vitb32")
+                faiss_file = repo_root / f"fracatlas_{idx_name}.faiss"
+                meta_file = repo_root / f"fracatlas_{idx_name}_metadata.json"
+
+                index_path = faiss_file if faiss_file.exists() else None
+                metadata_path = meta_file if meta_file.exists() else None
+
                 _PIPELINE_CACHE[key] = BoneRAGPipeline(
                     encoder=encoder,
                     generator=generator,
                     top_k=int(cfg.get("top_k", 4)),
                     min_similarity=float(cfg.get("min_similarity", 0.02)),
+                    index_path=index_path,
+                    metadata_path=metadata_path,
                 )
                 _MODEL_LOADING_STATUS[key] = "ready"
             except Exception as exc:

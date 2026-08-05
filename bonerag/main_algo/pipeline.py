@@ -102,7 +102,8 @@ class BoneRAGPipeline:
                 )
             self.records = loaded_records
         else:
-            self.records = records or SAMPLE_RECORDS
+            from bonerag.main_algo.data import get_sample_records
+            self.records = records or get_sample_records()
 
         self.record_by_id = {record.image_id: record for record in self.records}
         self.reranker = AnatomicalReranker()

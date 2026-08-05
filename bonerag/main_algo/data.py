@@ -261,4 +261,13 @@ FALLBACK_RECORDS: list[ImageRecord] = [
 ]
 
 
-SAMPLE_RECORDS: list[ImageRecord] = _build_dataset_sample_records() or FALLBACK_RECORDS
+def get_sample_records() -> list[ImageRecord]:
+    """Dynamically build dataset records if local images exist, else fallback."""
+    records = _build_dataset_sample_records()
+    if records:
+        return records
+    return FALLBACK_RECORDS
+
+
+SAMPLE_RECORDS: list[ImageRecord] = get_sample_records()
+
