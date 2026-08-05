@@ -1,7 +1,24 @@
 const API_BASE = (import.meta.env.VITE_API_BASE_URL || '').replace(/\/+$/, '');
 
+export function resolveImageUrl(url) {
+  if (!url) return null;
+  if (url.startsWith('data:') || url.startsWith('http://') || url.startsWith('https://')) {
+    return url;
+  }
+  return url.startsWith('/') ? `${API_BASE}${url}` : `${API_BASE}/${url}`;
+}
+
 export function fetchRecords() {
-  return fetch(`${API_BASE}/api/records`).then((r) => r.json());
+  return fetch(`${API_BASE}/api/records`)
+    .then((r) => r.json())
+    .then((items) =>
+      Array.isArray(items)
+        ? items.map((rec) => ({
+            ...rec,
+            image_url: resolveImageUrl(rec.image_url),
+          }))
+        : []
+    );
 }
 
 export function openAnswerStream(question, { sessionId, questionRaw, attachedImage } = {}) {
