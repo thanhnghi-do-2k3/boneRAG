@@ -27,6 +27,7 @@ export function ModelSelector({ onConfigChange, variant = 'sidebar' }) {
   const handleSave = async () => {
     if (!active) return;
     setSaving(true);
+    setSaved(false);
     try {
       const payload = {
         ...active,
@@ -38,8 +39,18 @@ export function ModelSelector({ onConfigChange, variant = 'sidebar' }) {
         setActive(result.active || payload);
         setSaved(true);
         onConfigChange?.(result.active || payload);
-        setTimeout(() => setSaved(false), 2000);
+        setTimeout(() => setSaved(false), 3000);
+      } else {
+        // Model load failed — show error, revert UI
+        alert(`❌ Không thể tải model:\n${result.error || 'Unknown error'}\n\nVui lòng chọn model khác hoặc thử lại.`);
+        // Re-fetch current active config from server
+        fetchModelConfigs().then((data) => {
+          setConfigs(data);
+          setActive(data.active);
+        }).catch(() => {});
       }
+    } catch (err) {
+      alert(`❌ Lỗi kết nối khi tải model: ${err.message || err}`);
     } finally {
       setSaving(false);
     }
@@ -170,10 +181,10 @@ export function ModelSelector({ onConfigChange, variant = 'sidebar' }) {
             <div className="config-modal-footer">
               <button
                 className={`config-save-btn ${saved ? 'saved' : ''}`}
-                onClick={() => { handleSave(); setTimeout(() => setOpen(false), 700); }}
+                onClick={() => { handleSave().then(() => { if (!saving) setOpen(false); }); }}
                 disabled={saving}
               >
-                {saving ? '⏳ Đang lưu & khởi tạo...' : saved ? '✓ Đã cập nhật!' : '💾 Lưu cấu hình & Áp dụng'}
+                {saving ? '⏳ Đang tải model (có thể mất 1-3 phút)...' : saved ? '✅ Model đã sẵn sàng!' : '💾 Lưu & Tải model'}
               </button>
             </div>
           </article>

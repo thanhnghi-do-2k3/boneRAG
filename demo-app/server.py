@@ -118,6 +118,10 @@ EVALUATOR = BoneRAGEvaluator()
 
 _PIPELINE_LOCK = threading.Lock()
 
+# Tracks loading state per cache key: 'loading' | 'ready' | 'error:<msg>'
+_MODEL_LOADING_STATUS: dict[str, str] = {}
+_MODEL_LOADING_EVENTS: dict[str, threading.Event] = {}
+
 
 def _pipeline_cache_key(config: dict) -> str:
     return f"{config['encoder']}|{config['generator']}|{config.get('gemini_model', '')}|{config.get('openai_api_key', '')}|{config['top_k']}|{config['min_similarity']}"
@@ -137,15 +141,35 @@ def _get_pipeline(config: dict | None = None) -> BoneRAGPipeline:
     key = f"{encoder_name}|{gen_name}|{cfg.get('top_k', 4)}|{cfg.get('min_similarity', 0.02)}"
     with _PIPELINE_LOCK:
         if key not in _PIPELINE_CACHE:
-            encoder = get_multimodal_encoder(mode=encoder_name)
-            generator = get_generator(gen_name)
-            _PIPELINE_CACHE[key] = BoneRAGPipeline(
-                encoder=encoder,
-                generator=generator,
-                top_k=int(cfg.get("top_k", 4)),
-                min_similarity=float(cfg.get("min_similarity", 0.02)),
-            )
+            _MODEL_LOADING_STATUS[key] = "loading"
+            _MODEL_LOADING_EVENTS[key] = threading.Event()
+            try:
+                encoder = get_multimodal_encoder(mode=encoder_name)
+                generator = get_generator(gen_name)
+                _PIPELINE_CACHE[key] = BoneRAGPipeline(
+                    encoder=encoder,
+                    generator=generator,
+                    top_k=int(cfg.get("top_k", 4)),
+                    min_similarity=float(cfg.get("min_similarity", 0.02)),
+                )
+                _MODEL_LOADING_STATUS[key] = "ready"
+            except Exception as exc:
+                _MODEL_LOADING_STATUS[key] = f"error:{exc}"
+                raise
+            finally:
+                _MODEL_LOADING_EVENTS[key].set()
         return _PIPELINE_CACHE[key]
+
+
+def _preload_default_pipeline() -> None:
+    """Preload BiomedCLIP + local_context_synth at startup (background)."""
+    print("[demo-app] ⏳ Preloading BiomedCLIP encoder + local_context_synth generator...")
+    try:
+        _get_pipeline(_ACTIVE_CONFIG)
+        print("[demo-app] ✅ Default pipeline ready!")
+    except Exception as exc:
+        print(f"[demo-app] ❌ Preload failed: {exc}")
+
 
 
 # ---------------------------------------------------------------------------
@@ -190,6 +214,7 @@ class BoneRAGHandler(BaseHTTPRequestHandler):
             pass
 
     def _send_sse(self, events) -> None:
+        import threading
         try:
             self.send_response(200)
             self.send_header("Content-Type", "text/event-stream; charset=utf-8")
@@ -197,11 +222,28 @@ class BoneRAGHandler(BaseHTTPRequestHandler):
             self.send_header("Connection", "keep-alive")
             self.send_header("Access-Control-Allow-Origin", "*")
             self.end_headers()
-            for event in events:
-                raw = f"data: {json.dumps(event, ensure_ascii=False)}\n\n".encode("utf-8")
-                self.wfile.write(raw)
-                self.wfile.flush()
-                time.sleep(0.02)
+
+            # Keepalive thread: sends SSE comment ping every 10s to prevent connection drop
+            stop_event = threading.Event()
+            def _keepalive():
+                while not stop_event.is_set():
+                    try:
+                        self.wfile.write(b": ping\n\n")
+                        self.wfile.flush()
+                    except Exception:
+                        break
+                    stop_event.wait(10)
+            ka_thread = threading.Thread(target=_keepalive, daemon=True)
+            ka_thread.start()
+
+            try:
+                for event in events:
+                    raw = f"data: {json.dumps(event, ensure_ascii=False)}\n\n".encode("utf-8")
+                    self.wfile.write(raw)
+                    self.wfile.flush()
+                    time.sleep(0.02)
+            finally:
+                stop_event.set()
         except (BrokenPipeError, ConnectionResetError):
             pass
 
@@ -500,15 +542,20 @@ class BoneRAGHandler(BaseHTTPRequestHandler):
             if not question:
                 self._send_sse([{"type": "error", "message": "question is required"}])
                 return
-            self._send_sse(
-                self._public_stream_events(
+
+            def event_generator():
+                yield {"type": "stage", "stage": "retrieving", "message": "🔍 Đang tìm kiếm ảnh tương tự trong FAISS index..."}
+                hits = pipeline.retrieve(question, image_data_url=image_data_url, image_input=image_input)
+                yield {"type": "stage", "stage": "retrieve-hits", "message": f"Truy xuất được {len(hits)} ứng viên", "hits": hits}
+                yield from self._public_stream_events(
                     pipeline.answer_events(question, image_data_url=image_data_url, image_input=image_input),
                     session_id=session_id,
                     question_raw=question_raw,
                     question_pipeline=question,
                     attached_image=attached_image,
                 )
-            )
+
+            self._send_sse(event_generator())
             return
 
         if route == "/api/model-configs":
@@ -561,18 +608,32 @@ class BoneRAGHandler(BaseHTTPRequestHandler):
         if route == "/api/set-config":
             global _ACTIVE_CONFIG
             raw_gen = str(payload.get("generator", _ACTIVE_CONFIG.get("generator", "local_context_synth")))
-            _ACTIVE_CONFIG = {
+            new_config = {
                 "encoder": str(payload.get("encoder", _ACTIVE_CONFIG.get("encoder", "biomedclip"))),
                 "generator": _normalize_generator_name(raw_gen),
                 "top_k": int(payload.get("top_k", _ACTIVE_CONFIG.get("top_k", 4))),
                 "min_similarity": float(payload.get("min_similarity", _ACTIVE_CONFIG.get("min_similarity", 0.02))),
             }
-            # Eagerly init new pipeline
-            try:
-                _get_pipeline(_ACTIVE_CONFIG)
-                self._send_json({"ok": True, "active": _ACTIVE_CONFIG})
-            except Exception as exc:
-                self._send_json({"ok": False, "error": str(exc)}, status=400)
+            # Kick off model loading in background thread, then block until ready (max 300s)
+            load_done = threading.Event()
+            load_err: list[str] = []
+            def _load():
+                try:
+                    _get_pipeline(new_config)
+                except Exception as exc:
+                    load_err.append(str(exc))
+                finally:
+                    load_done.set()
+            threading.Thread(target=_load, daemon=True).start()
+            loaded = load_done.wait(timeout=300)
+            if not loaded:
+                self._send_json({"ok": False, "error": "Model load timeout (300s). Thử lại sau."}, status=503)
+                return
+            if load_err:
+                self._send_json({"ok": False, "error": load_err[0]}, status=400)
+                return
+            _ACTIVE_CONFIG = new_config
+            self._send_json({"ok": True, "active": _ACTIVE_CONFIG})
             return
 
         if route == "/api/feedback":
@@ -624,11 +685,10 @@ def main() -> None:
     _ACTIVE_CONFIG["generator"] = args.generator
 
     server = ThreadingHTTPServer((args.host, args.port), BoneRAGHandler)
-    print(f"\n[demo-app] 🚀 Server đã khởi động thành công!")
-    print(f"[demo-app] 👉 Truy cập Giao diện UI ngay tại: http://{args.host}:{args.port}/")
-    print(f"[demo-app] Cấu hình Foundation Model: Encoder={args.encoder} | Generator={args.generator}")
-    print(f"[demo-app] Đang tải mô hình vào RAM trong background (sẽ sẵn sàng khi có truy vấn)...")
-    threading.Thread(target=_get_pipeline, args=(_ACTIVE_CONFIG,), daemon=True).start()
+    print(f"\n[demo-app] 🚀 Server đã khởi động!")
+    print(f"[demo-app] 👉 http://{args.host}:{args.port}/")
+    print(f"[demo-app] ⏳ Đang preload model: Encoder={args.encoder} | Generator={args.generator}")
+    threading.Thread(target=_preload_default_pipeline, daemon=True).start()
 
     try:
         server.serve_forever()
