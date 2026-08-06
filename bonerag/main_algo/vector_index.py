@@ -77,6 +77,8 @@ class FAISSVectorIndex:
         for score, idx in zip(scores[0], indices[0]):
             if idx >= 0 and idx < len(self.id_to_record):
                 hits.append(SearchHit(record_id=self.id_to_record[idx], score=float(score)))
+        return hits
+
     def load_from_file(self, index_file: str | Path, id_to_record: list[str]) -> None:
         """Load pre-computed FAISS index from disk instantly (<0.05s)."""
         self.index = self.faiss.read_index(str(index_file))
