@@ -4,6 +4,17 @@ venv/
 ENV/
 env/
 
+# Local secrets and credentials
+.env
+.env.*
+!.env.example
+*.secret
+*.secrets
+*credentials*.json
+*service-account*.json
+ngrok.yml
+ngrok.yaml
+
 # Python cache & compiled files
 __pycache__/
 **/__pycache__/

@@ -47,6 +47,16 @@ curl https://YOUR_BACKEND_URL/api/health
 ```
 
 Kết quả cần có `"ok": true` và `"sse": true`. Màn hình Benchmark cũng gọi backend qua `VITE_API_BASE_URL`; không dùng relative `/api/run-live-benchmark` nữa nên Vercel và Colab có thể chạy khác domain.
+
+## Bảo vệ token
+
+Không đặt `NGROK_AUTHTOKEN` trực tiếp trong notebook, GitHub, Vercel frontend hoặc log. Trong Colab, khai báo Secret tên `NGROK_AUTHTOKEN`; notebook chỉ đọc bằng `os.environ`. Trước khi push, chạy:
+
+```bash
+python3 scripts/check_secrets.py
+```
+
+Nếu token từng xuất hiện trong Git history, hãy revoke token đó trên ngrok và tạo token mới trước khi dùng lại.
 3. Nhấn **Deploy**.
 
 ---
