@@ -5,6 +5,12 @@ const DEFAULT_HEADERS = {
   'ngrok-skip-browser-warning': 'true',
 };
 
+function backendConfigurationError() {
+  return new Error(
+    'Chưa cấu hình backend. Hãy đặt VITE_API_BASE_URL bằng URL Colab/ngrok rồi build và redeploy lại Vercel.',
+  );
+}
+
 function logRequest(method, url) {
   console.log(`[BoneRAG API] 🔵 ${method} ${url}`);
   console.log(`[BoneRAG API]    API_BASE="${API_BASE || '(empty — same origin)'}"`);
@@ -20,6 +26,11 @@ function logError(url, err) {
 }
 
 async function apiFetch(path, opts = {}) {
+  if (!API_BASE) {
+    const error = backendConfigurationError();
+    logError(path, error);
+    throw error;
+  }
   const url = `${API_BASE}${path}`;
   logRequest(opts.method || 'GET', url);
   try {
@@ -65,6 +76,13 @@ function openSSEStream(path, params) {
   const ctrl = { onmessage: null, onerror: null, _aborted: false };
   const abortController = new AbortController();
 
+  if (!API_BASE) {
+    const error = backendConfigurationError();
+    console.error(`[BoneRAG API] ${error.message}`);
+    queueMicrotask(() => ctrl.onerror?.({ message: error.message }));
+    return ctrl;
+  }
+
   ctrl.close = () => {
     ctrl._aborted = true;
     abortController.abort();
@@ -79,8 +97,13 @@ function openSSEStream(path, params) {
       logResponse(url, res);
       if (!res.ok || !res.body) {
         const text = await res.text().catch(() => '');
-        console.error('[BoneRAG API] SSE non-OK response body:', text.slice(0, 200));
-        ctrl.onerror?.({ message: `HTTP ${res.status}` });
+        const contentType = res.headers.get('content-type') || '';
+        const htmlFallback = contentType.includes('text/html') || /^\s*<!doctype html/i.test(text);
+        const message = htmlFallback
+          ? 'Backend URL đang trỏ về frontend Vercel hoặc chưa được cấu hình. Kiểm tra VITE_API_BASE_URL rồi build lại.'
+          : `HTTP ${res.status}`;
+        console.error('[BoneRAG API] SSE non-OK response:', message, text.slice(0, 200));
+        ctrl.onerror?.({ message });
         return;
       }
       const reader = res.body.getReader();
