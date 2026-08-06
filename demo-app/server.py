@@ -235,13 +235,18 @@ class BoneRAGHandler(BaseHTTPRequestHandler):
             self.send_header("Access-Control-Allow-Origin", "*")
             self.end_headers()
 
+            # Thread-safe write lock to prevent keepalive + main thread from
+            # interleaving writes to self.wfile and corrupting SSE frames.
+            write_lock = threading.Lock()
+
             # Keepalive thread: sends SSE comment ping every 10s to prevent connection drop
             stop_event = threading.Event()
             def _keepalive():
                 while not stop_event.is_set():
                     try:
-                        self.wfile.write(b": ping\n\n")
-                        self.wfile.flush()
+                        with write_lock:
+                            self.wfile.write(b": ping\n\n")
+                            self.wfile.flush()
                     except Exception:
                         break
                     stop_event.wait(10)
@@ -251,9 +256,26 @@ class BoneRAGHandler(BaseHTTPRequestHandler):
             try:
                 for event in events:
                     raw = f"data: {json.dumps(event, ensure_ascii=False, default=str)}\n\n".encode("utf-8")
-                    self.wfile.write(raw)
-                    self.wfile.flush()
+                    with write_lock:
+                        self.wfile.write(raw)
+                        self.wfile.flush()
                     time.sleep(0.02)
+            except (BrokenPipeError, ConnectionResetError):
+                pass
+            except Exception as exc:
+                # Send error event to frontend so it can show the error
+                # instead of spinning forever with "Đang suy nghĩ..."
+                print(f"[demo-app] ❌ SSE generator error: {exc}")
+                import traceback
+                traceback.print_exc()
+                try:
+                    err_event = {"type": "error", "message": f"Server error: {exc}"}
+                    raw = f"data: {json.dumps(err_event, ensure_ascii=False, default=str)}\n\n".encode("utf-8")
+                    with write_lock:
+                        self.wfile.write(raw)
+                        self.wfile.flush()
+                except Exception:
+                    pass
             finally:
                 stop_event.set()
         except (BrokenPipeError, ConnectionResetError):

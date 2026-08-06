@@ -89,9 +89,29 @@ export function openAnswerStream(question, { sessionId, questionRaw, attachedIma
       const reader = res.body.getReader();
       const decoder = new TextDecoder();
       let buffer = '';
+      let receivedDone = false;
       while (true) {
         const { done, value } = await reader.read();
-        if (done || ctrl._aborted) break;
+        if (done || ctrl._aborted) {
+          // Process any remaining data in buffer before exiting
+          if (buffer.trim()) {
+            for (const line of buffer.split(/\r?\n/)) {
+              if (line.startsWith('data: ')) {
+                const data = line.slice(6).trim();
+                if (data) {
+                  try {
+                    const parsed = JSON.parse(data);
+                    if (parsed.type === 'done') receivedDone = true;
+                    ctrl.onmessage?.({ data });
+                  } catch (e) {
+                    console.error('[BoneRAG SSE] Error in final buffer parse:', e);
+                  }
+                }
+              }
+            }
+          }
+          break;
+        }
         buffer += decoder.decode(value, { stream: true });
         const blocks = buffer.split(/\r?\n\r?\n/);
         buffer = blocks.pop() || '';
@@ -101,6 +121,8 @@ export function openAnswerStream(question, { sessionId, questionRaw, attachedIma
               const data = line.slice(6).trim();
               if (data) {
                 try {
+                  const parsed = JSON.parse(data);
+                  if (parsed.type === 'done') receivedDone = true;
                   ctrl.onmessage?.({ data });
                 } catch (e) {
                   console.error('[BoneRAG SSE] Error in onmessage:', e);
@@ -109,6 +131,11 @@ export function openAnswerStream(question, { sessionId, questionRaw, attachedIma
             }
           }
         }
+      }
+      // If stream ended without a 'done' event, fire error so UI stops spinning
+      if (!receivedDone && !ctrl._aborted) {
+        console.warn('[BoneRAG SSE] Stream ended without done event — firing error');
+        ctrl.onerror?.({ message: 'Stream ended unexpectedly' });
       }
     } catch (err) {
       if (err.name !== 'AbortError') {
