@@ -182,3 +182,12 @@ Mỗi lần Agent phát hiện sai sót / sửa đổi thuật toán, một entr
   3. [`boneragApi.js`](file:///Users/nghidothanh/Documents/School/TGMT/BoneRAG/demo-app/frontend/src/services/boneragApi.js): Track `receivedDone` flag. Khi stream kết thúc mà chưa nhận `done` event → fire `onerror` để trigger POST fallback.
   4. [`boneragApi.js`](file:///Users/nghidothanh/Documents/School/TGMT/BoneRAG/demo-app/frontend/src/services/boneragApi.js): Process remaining buffer data khi stream kết thúc (tránh mất `done` event cuối cùng).
 - ✅ **Kết quả thu được**: Build thành công, push commit `81e9550`.
+
+---
+
+### [2026-08-06] Entry #016 - Fix Missing `return hits` in FAISSVectorIndex.search()
+- ⏱️ **Thời gian**: 2026-08-06T16:19:00Z
+- ❓ **Lý do sửa**: Server trả lỗi `Server error: 'NoneType' object is not iterable` khi user gửi câu hỏi. Chat hiển thị thông báo lỗi thay vì câu trả lời.
+- 🔍 **Nguyên nhân lỗi**: `FAISSVectorIndex.search()` trong [`vector_index.py`](file:///Users/nghidothanh/Documents/School/TGMT/BoneRAG/bonerag/main_algo/vector_index.py) **thiếu `return hits`** ở cuối method. Python function không có `return` → trả về `None`. Khi `pipeline.retrieve()` gọi `self.index.search()` → nhận `None` → `for hit in None` → `TypeError: 'NoneType' object is not iterable`.
+- 🛠️ **Những gì đã sửa**: Thêm `return hits` vào cuối `FAISSVectorIndex.search()` (line 79 trong [`vector_index.py`](file:///Users/nghidothanh/Documents/School/TGMT/BoneRAG/bonerag/main_algo/vector_index.py)).
+- ✅ **Kết quả thu được**: Build thành công, push commit `2d95354`. Lỗi này chỉ xảy ra khi dùng FAISS (trên Colab với GPU), không ảnh hưởng InMemoryVectorIndex (đã có `return` đúng).
