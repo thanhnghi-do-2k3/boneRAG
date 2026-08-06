@@ -166,3 +166,19 @@ Mỗi lần Agent phát hiện sai sót / sửa đổi thuật toán, một entr
 - 🔍 **Nguyên nhân lỗi**: Trình duyệt lưu `localStorage` key cũ mang tên `"template"`, trong khi backend đã đổi sang `local_context_synth`.
 - 🛠️ **Những gì đã sửa**: Bổ sung hàm `_normalize_generator_name()` tại [`demo-app/server.py`](file:///Users/nghidothanh/Documents/School/TGMT/BoneRAG/demo-app/server.py) để tự động ánh xạ chuỗi `template` -> `local_context_synth`.
 - ✅ **Kết quả thu được**: Màn hình web tự động cập nhật tên chuẩn `BoneRAG Evidence Synthesizer (0% Prior Leakage)`.
+
+---
+
+### [2026-08-06] Entry #015 - Fix Race Condition SSE + Stream-End Handling
+- ⏱️ **Thời gian**: 2026-08-06T14:33:00Z
+- ❓ **Lý do sửa**: Frontend hiển thị "Đang suy nghĩ..." mãi không nhận được câu trả lời. SSE stream trả về 200 nhưng chỉ 837 bytes — data bị corrupt hoặc stream kết thúc sớm mà frontend không phát hiện.
+- 🔍 **Nguyên nhân lỗi**: 
+  1. **Race condition**: `_send_sse` tạo keepalive thread ghi `": ping\n\n"` và main thread ghi `"data: {...}\n\n"` đồng thời vào cùng `self.wfile` mà KHÔNG có lock → dữ liệu bị interleave, JSON bị corrupt, frontend không parse được.
+  2. **Exception bị nuốt**: Nếu generator raise exception (ví dụ model crash), ngoại lệ bị catch bởi `except (BrokenPipeError, ConnectionResetError)` → frontend không bao giờ nhận `done` hay `error` event.
+  3. **Frontend không handle stream-end**: Khi SSE stream kết thúc (reader.done=true) mà chưa nhận `done` event, frontend cứ giữ trạng thái "đang suy nghĩ" mãi.
+- 🛠️ **Những gì đã sửa**:
+  1. [`server.py`](file:///Users/nghidothanh/Documents/School/TGMT/BoneRAG/demo-app/server.py) `_send_sse()`: Thêm `threading.Lock()` (`write_lock`) bảo vệ mọi write vào `self.wfile` (cả keepalive và main thread).
+  2. [`server.py`](file:///Users/nghidothanh/Documents/School/TGMT/BoneRAG/demo-app/server.py) `_send_sse()`: Catch exception từ generator → gửi `{"type": "error", "message": "..."}` event về frontend thay vì im lặng.
+  3. [`boneragApi.js`](file:///Users/nghidothanh/Documents/School/TGMT/BoneRAG/demo-app/frontend/src/services/boneragApi.js): Track `receivedDone` flag. Khi stream kết thúc mà chưa nhận `done` event → fire `onerror` để trigger POST fallback.
+  4. [`boneragApi.js`](file:///Users/nghidothanh/Documents/School/TGMT/BoneRAG/demo-app/frontend/src/services/boneragApi.js): Process remaining buffer data khi stream kết thúc (tránh mất `done` event cuối cùng).
+- ✅ **Kết quả thu được**: Build thành công, push commit `81e9550`.
