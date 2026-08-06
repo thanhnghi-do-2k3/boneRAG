@@ -57,12 +57,9 @@ export function fetchRecords() {
  * does not support. Returns a controller object compatible with the
  * EventSource-like interface App.jsx expects: { onmessage, onerror, close }.
  */
-export function openAnswerStream(question, { sessionId, questionRaw, attachedImage } = {}) {
-  const params = new URLSearchParams({ question });
-  if (sessionId) params.set('session_id', sessionId);
-  if (questionRaw) params.set('question_raw', questionRaw);
-  if (attachedImage) params.set('attached_image', JSON.stringify(attachedImage));
-  const url = `${API_BASE}/api/answer-stream?${params.toString()}`;
+function openSSEStream(path, params) {
+  const query = new URLSearchParams(params);
+  const url = `${API_BASE}${path}?${query.toString()}`;
   console.log(`[BoneRAG API] 🔵 SSE OPEN (fetch) ${url}`);
 
   const ctrl = { onmessage: null, onerror: null, _aborted: false };
@@ -146,6 +143,21 @@ export function openAnswerStream(question, { sessionId, questionRaw, attachedIma
   })();
 
   return ctrl;
+}
+
+export function openAnswerStream(question, { sessionId, questionRaw, attachedImage } = {}) {
+  const params = { question };
+  if (sessionId) params.session_id = sessionId;
+  if (questionRaw) params.question_raw = questionRaw;
+  if (attachedImage) params.attached_image = JSON.stringify(attachedImage);
+  return openSSEStream('/api/answer-stream', params);
+}
+
+export function openBenchmarkStream({ encoder, generator } = {}) {
+  return openSSEStream('/api/run-live-benchmark', {
+    encoder: encoder || 'biomedclip',
+    generator: generator || 'local_context_synth',
+  });
 }
 
 

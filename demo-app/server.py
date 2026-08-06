@@ -565,6 +565,15 @@ class BoneRAGHandler(BaseHTTPRequestHandler):
         parsed = urlparse(self.path)
         route = parsed.path
 
+        if route == "/api/health":
+            self._send_json({
+                "ok": True,
+                "service": "bonerag-backend",
+                "sse": True,
+                "active_config": _ACTIVE_CONFIG,
+            })
+            return
+
         if route == "/api/records":
             pipeline = _get_pipeline()
             self._send_json([self._record_to_public_payload(r) for r in pipeline.records_as_dicts()])

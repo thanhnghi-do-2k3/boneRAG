@@ -1,5 +1,6 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { ScreenHeader } from '../design-system/ScreenHeader';
+import { openBenchmarkStream } from '../services/boneragApi';
 
 export function EvaluationScreen() {
   const [encoder, setEncoder] = useState('biomedclip');
@@ -22,8 +23,7 @@ export function EvaluationScreen() {
     setCompletedSummary(null);
     setProgress({ current: 0, total: 30 });
 
-    const url = `/api/run-live-benchmark?encoder=${encodeURIComponent(encoder)}&generator=${encodeURIComponent(generator)}`;
-    const eventSource = new EventSource(url);
+    const eventSource = openBenchmarkStream({ encoder, generator });
 
     eventSource.onmessage = (event) => {
       try {
@@ -52,7 +52,7 @@ export function EvaluationScreen() {
     };
 
     eventSource.onerror = (err) => {
-      setLogs((prev) => [...prev, `[STREAM END] Live benchmark connection closed.`]);
+      setLogs((prev) => [...prev, `[STREAM ERROR] Kết nối backend bị đóng: ${err?.message || 'không nhận được sự kiện hoàn tất'}. Kiểm tra VITE_API_BASE_URL và Colab URL.`]);
       setIsRunning(false);
       eventSource.close();
     };

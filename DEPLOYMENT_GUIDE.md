@@ -37,6 +37,16 @@ graph LR
 2. Trong phần **Environment Variables**, thêm biến:
    * **Key:** `VITE_API_BASE_URL`
    * **Value:** `https://bonerag-backend.onrender.com` (Dán URL từ Render ở Bước 1).
+3. Nếu frontend chạy từ Colab/ngrok, đặt `VITE_API_BASE_URL` bằng đúng URL `https://...ngrok-free.app` mà notebook in ra, không thêm dấu `/` cuối.
+4. Sau khi đổi biến môi trường, bắt buộc bấm **Redeploy** vì Vite nhúng biến `VITE_*` vào bundle lúc build.
+
+Kiểm tra backend trước khi mở giao diện:
+
+```bash
+curl https://YOUR_BACKEND_URL/api/health
+```
+
+Kết quả cần có `"ok": true` và `"sse": true`. Màn hình Benchmark cũng gọi backend qua `VITE_API_BASE_URL`; không dùng relative `/api/run-live-benchmark` nữa nên Vercel và Colab có thể chạy khác domain.
 3. Nhấn **Deploy**.
 
 ---
