@@ -380,7 +380,7 @@ class BoneRAGHandler(BaseHTTPRequestHandler):
                 ])
             # Try _discover_dataset_images_root()
             try:
-                from bonerag.main_algo.data import _discover_dataset_images_root
+                from bonerag.main_algo.data import _discover_dataset_images_root, resolve_dataset_image_path
                 root = _discover_dataset_images_root()
                 if root:
                     candidates.extend([
@@ -388,6 +388,9 @@ class BoneRAGHandler(BaseHTTPRequestHandler):
                         root / raw_path.parent.name / raw_path.name,
                         root.parent / raw_path.name,
                     ])
+                resolved = resolve_dataset_image_path(str(raw_path))
+                if resolved:
+                    candidates.append(resolved)
             except Exception:
                 pass
 

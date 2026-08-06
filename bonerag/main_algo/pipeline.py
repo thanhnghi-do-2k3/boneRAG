@@ -16,7 +16,7 @@ from pathlib import Path
 from typing import Iterator
 
 from .citation_synthesizer import EvidenceCitationSynthesizer
-from .data import ImageRecord, SAMPLE_RECORDS
+from .data import ImageRecord, SAMPLE_RECORDS, resolve_dataset_image_path
 from .encoder import BaseMultimodalEncoder, get_multimodal_encoder
 from .factuality import FactualityAuditor
 from .gating import EvidenceGate, GateDecision
@@ -87,6 +87,8 @@ class BoneRAGPipeline:
                 meta_list = json.load(fh)
             loaded_records = []
             for item in meta_list:
+                raw_image_path = item.get("image_path")
+                resolved_image_path = resolve_dataset_image_path(raw_image_path)
                 loaded_records.append(
                     ImageRecord(
                         image_id=item.get("image_id", ""),
@@ -97,7 +99,7 @@ class BoneRAGPipeline:
                         region=item.get("region", "unknown"),
                         evidence_note=item.get("evidence_note", ""),
                         text=item.get("text", ""),
-                        image_path=item.get("image_path"),
+                        image_path=str(resolved_image_path) if resolved_image_path else raw_image_path,
                     )
                 )
             self.records = loaded_records

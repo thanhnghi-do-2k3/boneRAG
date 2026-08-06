@@ -8,6 +8,7 @@ machine without downloading datasets.
 from __future__ import annotations
 
 from dataclasses import dataclass
+from functools import lru_cache
 import json
 import os
 from pathlib import Path
@@ -68,6 +69,34 @@ def _discover_dataset_images_root() -> Path | None:
             if (candidate / "images" / "Fractured").is_dir() or (candidate / "images" / "Non_fractured").is_dir():
                 return candidate / "images"
 
+    return None
+
+
+@lru_cache(maxsize=4096)
+def resolve_dataset_image_path(image_path: str | None) -> Path | None:
+    """Resolve metadata paths across local, Colab, and extracted dataset layouts."""
+    if not image_path:
+        return None
+
+    raw = Path(image_path).expanduser()
+    candidates = [raw]
+    if not raw.is_absolute():
+        repo_root = Path(__file__).resolve().parents[2]
+        candidates.extend([Path.cwd() / raw, repo_root / raw, Path("/content") / raw])
+
+    root = _discover_dataset_images_root()
+    if root:
+        filename = raw.name
+        candidates.extend([root / filename, root / raw.parent.name / filename])
+        candidates.extend(root.rglob(filename))
+
+    for candidate in candidates:
+        try:
+            resolved = candidate.expanduser().resolve()
+        except OSError:
+            continue
+        if resolved.is_file():
+            return resolved
     return None
 
 
@@ -270,4 +299,3 @@ def get_sample_records() -> list[ImageRecord]:
 
 
 SAMPLE_RECORDS: list[ImageRecord] = get_sample_records()
-
