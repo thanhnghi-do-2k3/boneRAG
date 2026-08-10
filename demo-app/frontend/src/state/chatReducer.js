@@ -120,6 +120,10 @@ export function chatReducer(state, action) {
                 text: action.result.answer,
                 evidence: action.result.evidence ?? [],
                 question: action.result.question,
+                model_name: action.result.debug?.model_config?.generator
+                  || action.result.debug?.generator_type
+                  || message.model_name
+                  || 'BoneRAG',
                 status: 'done',
               }
             : message,

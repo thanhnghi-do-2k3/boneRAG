@@ -338,8 +338,7 @@ button:disabled {
 
 .message-row {
   display: flex;
-  width: min(100%, 1040px);
-  margin: 0 auto;
+  width: 100%;
 }
 
 .message-row.user {
@@ -348,6 +347,36 @@ button:disabled {
 
 .message-row.assistant {
   justify-content: flex-start;
+}
+
+.message-group {
+  width: min(100%, 1040px);
+  margin: 0 auto;
+  display: grid;
+  gap: 8px;
+}
+
+.message-attachment-row {
+  display: flex;
+  width: 100%;
+  animation: bubble-in 0.22s ease-out both;
+}
+
+.message-group.user .message-attachment-row {
+  justify-content: flex-end;
+}
+
+.attachment-bubble {
+  width: min(100%, 560px);
+  padding: 12px;
+  border: 1px solid rgba(255, 255, 255, 0.13);
+  border-radius: 22px;
+  background: rgba(44, 44, 46, 0.9);
+  box-shadow: 0 12px 26px rgba(0, 0, 0, 0.16);
+}
+
+.message-group.assistant .attachment-bubble {
+  background: var(--panel);
 }
 
 .chat-bubble {
@@ -487,9 +516,9 @@ textarea::placeholder {
 .bubble-images-gallery {
   display: flex;
   flex-wrap: wrap;
-  gap: 12px;
-  margin-top: 10px;
-  margin-bottom: 12px;
+  gap: 10px;
+  margin-top: 8px;
+  margin-bottom: 0;
   width: 100%;
 }
 

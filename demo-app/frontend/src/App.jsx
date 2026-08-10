@@ -135,12 +135,16 @@ export function App() {
           question: trimmed,
           answer: cleanAnswer,
         };
+        const modelName = displayResult.debug?.model_config?.generator
+          || displayResult.debug?.generator_type
+          || 'BoneRAG';
 
         const finalAssistantMessage = {
           ...assistantMessage,
           text: displayResult.answer,
           evidence: displayResult.evidence ?? [],
           question: displayResult.question,
+          model_name: modelName,
           status: 'done',
         };
         const nextMessages = [...baseMessages, userMessage, finalAssistantMessage].map((item) =>
@@ -150,6 +154,7 @@ export function App() {
                 text: displayResult.answer,
                 evidence: displayResult.evidence ?? [],
                 question: displayResult.question,
+                model_name: modelName,
                 status: 'done',
               }
             : item,
