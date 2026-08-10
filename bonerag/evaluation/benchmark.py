@@ -8,6 +8,7 @@ whole test hold-out from retrieval, and evaluates every system on the same cases
 from __future__ import annotations
 
 import hashlib
+import os
 import time
 from dataclasses import dataclass
 from pathlib import Path
@@ -22,6 +23,17 @@ from bonerag.main_algo.pipeline import BoneRAGPipeline, PipelineResult
 
 
 BENCHMARK_VERSION = "bonerag-fracatlas-image-v1"
+
+
+def benchmark_runs_path() -> Path:
+    runtime_dir = os.environ.get("BONERAG_RUNTIME_DATA_DIR", "").strip()
+    path = (
+        Path(runtime_dir).expanduser() / "benchmark_runs.jsonl"
+        if runtime_dir
+        else Path(__file__).resolve().parent / "benchmark_runs.jsonl"
+    )
+    path.parent.mkdir(parents=True, exist_ok=True)
+    return path
 
 
 @dataclass(frozen=True)

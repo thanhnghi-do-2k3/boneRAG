@@ -47,6 +47,16 @@ The web result shows per-system aggregates and every case. The backend appends
 the complete run to `benchmark_runs.jsonl`; the UI can export the current run
 as JSON.
 
+On Colab, `colab/02_BoneRAG_GPU_Server_Deploy.ipynb` sets
+`BONERAG_RUNTIME_DATA_DIR` to `Google Drive/BoneRAG_Data/runtime`. Therefore
+these files survive a server restart or a new Colab runtime:
+
+- `sessions.jsonl`: chat/session logs and feedback
+- `benchmark_runs.jsonl`: completed benchmark runs
+- `bonerag_server.log`: backend startup/runtime log
+- `indexes/`: regenerated FAISS and metadata artifacts
+- `model_cache/`: Hugging Face and Torch model cache
+
 ## Reproduction
 
 1. Run the FracAtlas indexing notebook after mounting the dataset. The index

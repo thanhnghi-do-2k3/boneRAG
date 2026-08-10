@@ -104,6 +104,10 @@ từng case, kết quả tổng hợp, fingerprint dataset và trạng thái fal
 generator. Nếu thiếu dataset hoặc artifact offline, hệ thống báo lỗi thay vì
 chuyển sang corpus minh họa.
 
+Notebook Colab deploy lưu session log, benchmark result, server log, FAISS
+artifacts và model cache trong `Google Drive/BoneRAG_Data/`, nên khởi động lại
+server không làm mất các kết quả đã ghi.
+
 ---
 
 ## 📖 Tài liệu tham khảo & AI Context Guide

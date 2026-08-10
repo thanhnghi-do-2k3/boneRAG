@@ -483,6 +483,7 @@ class BoneRAGHandler(BaseHTTPRequestHandler):
         from evaluation.benchmark import (
             SYSTEMS,
             build_cases,
+            benchmark_runs_path,
             protocol_metadata,
             run_system_case,
             aggregate_case_scores,
@@ -574,7 +575,7 @@ class BoneRAGHandler(BaseHTTPRequestHandler):
             "systems": system_summaries,
             "cases": all_results,
         }
-        run_path = Path(__file__).resolve().parents[1] / "bonerag" / "evaluation" / "benchmark_runs.jsonl"
+        run_path = benchmark_runs_path()
         try:
             with run_path.open("a", encoding="utf-8") as fh:
                 fh.write(json.dumps(run_record, ensure_ascii=False) + "\n")
@@ -692,7 +693,9 @@ class BoneRAGHandler(BaseHTTPRequestHandler):
             return
 
         if route == "/api/benchmark-runs":
-            run_path = Path(__file__).resolve().parents[1] / "bonerag" / "evaluation" / "benchmark_runs.jsonl"
+            from evaluation.benchmark import benchmark_runs_path
+
+            run_path = benchmark_runs_path()
             runs: list[dict[str, object]] = []
             if run_path.exists():
                 with run_path.open("r", encoding="utf-8") as handle:

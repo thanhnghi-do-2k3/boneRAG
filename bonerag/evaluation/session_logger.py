@@ -7,6 +7,7 @@ Each line is an independent JSON object (append-friendly, Pandas-readable).
 from __future__ import annotations
 
 import json
+import os
 import threading
 from datetime import datetime, timezone
 from pathlib import Path
@@ -14,11 +15,18 @@ from pathlib import Path
 _DEFAULT_LOG_PATH = Path(__file__).resolve().parents[1] / "evaluation" / "sessions.jsonl"
 
 
+def default_session_log_path() -> Path:
+    runtime_dir = os.environ.get("BONERAG_RUNTIME_DATA_DIR", "").strip()
+    if runtime_dir:
+        return Path(runtime_dir).expanduser() / "sessions.jsonl"
+    return _DEFAULT_LOG_PATH
+
+
 class SessionLogger:
     """Thread-safe logger that appends session entries to a JSONL file."""
 
     def __init__(self, log_path: Path | str | None = None) -> None:
-        self.log_path = Path(log_path) if log_path else _DEFAULT_LOG_PATH
+        self.log_path = Path(log_path) if log_path else default_session_log_path()
         self.log_path.parent.mkdir(parents=True, exist_ok=True)
         self._lock = threading.Lock()
 

@@ -23,6 +23,7 @@ from typing import Any
 from bonerag.evaluation.benchmark import (
     SYSTEMS,
     aggregate_case_scores,
+    benchmark_runs_path,
     build_cases,
     protocol_metadata,
     run_system_case,
@@ -126,7 +127,7 @@ def _run_generator_matrix(
         "generator": generator_name,
         "systems": system_results,
     }
-    run_path = Path(__file__).resolve().parent / "benchmark_runs.jsonl"
+    run_path = benchmark_runs_path()
     with run_path.open("a", encoding="utf-8") as handle:
         handle.write(json.dumps(run_record, ensure_ascii=False) + "\n")
     return run_record
