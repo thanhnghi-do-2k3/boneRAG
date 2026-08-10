@@ -105,7 +105,8 @@ for idx, m_cfg in enumerate(FOUNDATION_MODELS, 1):
                 feats_np = feats.cpu().numpy().astype(np.float32)
 
             for p, vec in zip(valid_paths, feats_np):
-                is_frac = "fractured" in p.name.lower() or "fracture" in str(p.parent).lower()
+                parent_label = p.parent.name.lower().replace("-", "_")
+                is_frac = parent_label == "fractured"
                 vectors.append(vec)
                 metadata.append({
                     "image_id": f"fracatlas-{'fractured' if is_frac else 'normal'}-{p.stem.lower()}",

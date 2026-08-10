@@ -67,6 +67,7 @@ class BiomedCLIPEncoder(BaseMultimodalEncoder):
         self,
         model_name: str = "hf-hub:microsoft/BiomedCLIP-PubMedBERT_256-vit_base_patch16_224",
         pretrained: str = "",
+        strict: bool = False,
     ) -> None:
         import torch
         import open_clip
@@ -82,6 +83,8 @@ class BiomedCLIPEncoder(BaseMultimodalEncoder):
             )
             self.tokenizer = open_clip.get_tokenizer(model_name)
         except Exception:
+            if strict:
+                raise
             # Fallback to standard ViT-B-32 if hub weights require download or network error
             self.model, _, self.preprocess = open_clip.create_model_and_transforms(
                 "ViT-B-32", pretrained="openai"
@@ -131,21 +134,23 @@ class BiomedCLIPEncoder(BaseMultimodalEncoder):
         return self.encode_image(image)
 
 
-def get_multimodal_encoder(mode: str = "biomedclip") -> BaseMultimodalEncoder:
+def get_multimodal_encoder(mode: str = "biomedclip", strict: bool = False) -> BaseMultimodalEncoder:
     """Return BiomedCLIPEncoder, CLIPViTB32Encoder, CLIPViTL14Encoder, or ResNetEncoder."""
     if mode in ("clip", "clip_vit_b32"):
-        return BiomedCLIPEncoder(model_name="ViT-B-32", pretrained="openai")
+        return BiomedCLIPEncoder(model_name="ViT-B-32", pretrained="openai", strict=strict)
     if mode == "clip_vit_l14":
-        return BiomedCLIPEncoder(model_name="ViT-L-14", pretrained="openai")
+        return BiomedCLIPEncoder(model_name="ViT-L-14", pretrained="openai", strict=strict)
     if mode in ("resnet", "resnet_text"):
-        return BiomedCLIPEncoder(model_name="RN50", pretrained="openai")
+        return BiomedCLIPEncoder(model_name="RN50", pretrained="openai", strict=strict)
 
     # Default to BiomedCLIP (PubMedBERT + ViT-B/16)
     try:
-        return BiomedCLIPEncoder()
+        return BiomedCLIPEncoder(strict=strict)
     except Exception as exc:
+        if strict:
+            raise
         print(f"[encoder] BiomedCLIP init warning: {exc}, falling back to OpenAI CLIP ViT-B/32")
-        return BiomedCLIPEncoder(model_name="ViT-B-32", pretrained="openai")
+        return BiomedCLIPEncoder(model_name="ViT-B-32", pretrained="openai", strict=strict)
 
 
 AVAILABLE_ENCODERS = {
@@ -174,4 +179,3 @@ AVAILABLE_ENCODERS = {
         "download_size_mb": 200,
     },
 }
-

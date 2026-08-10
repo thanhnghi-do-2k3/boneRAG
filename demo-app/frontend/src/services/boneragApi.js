@@ -183,6 +183,11 @@ export function openBenchmarkStream({ encoder, generator } = {}) {
   });
 }
 
+export function fetchBenchmarkRuns() {
+  return apiFetch('/api/benchmark-runs')
+    .then((response) => response.json())
+    .then((runs) => (Array.isArray(runs) ? runs : []));
+}
 
 export function fetchModelConfigs() {
   return apiFetch('/api/model-configs').then((r) => r.json());

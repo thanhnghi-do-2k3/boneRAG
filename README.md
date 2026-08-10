@@ -45,7 +45,7 @@ BoneRAG/
   - Truy xuất đa tầng (Multi-level Retrieval): Mã hóa & tìm kiếm song song trên **Full Image**, **ROI Fracture Crops**, và **Text Metadata**.
 - [ ] **Milestone 3 - Rerank & Evidence Gate**: Reranker loại bỏ hard negative theo vùng cơ thể, Cổng từ chối (Refusal gate) khi bằng chứng yếu.
 - [ ] **Milestone 4 - MLLM Generator**: Tích hợp mô hình MLLM (Qwen2.5-VL / LLaVA-Med) sinh câu trả lời có grounding.
-- [ ] **Milestone 5 - Evaluation**: Thực nghiệm & đánh giá toàn diện (Recall@k, Hit@k, Accuracy, Faithfulness, Latency).
+- [x] **Milestone 5 - Evaluation protocol**: Benchmark FracAtlas thật, test hold-out cố định, bốn retrieval systems, log SSE và export JSON. Xem [`BENCHMARK_PROTOCOL.md`](bonerag/evaluation/BENCHMARK_PROTOCOL.md) và [`COMPARISON_GUIDE.md`](bonerag/evaluation/COMPARISON_GUIDE.md).
 
 ---
 
@@ -55,7 +55,7 @@ BoneRAG/
 
 Để chạy đầy đủ chế độ BiomedCLIP & FAISS Vector Index:
 ```bash
-pip install faiss-cpu open_clip_torch torch torchvision Pillow
+pip install -r bonerag/evaluation/requirements-benchmark.txt
 ```
 *(Lưu ý: Hệ thống đã được thiết kế tự động fallback sang chế độ nhẹ nếu chưa cài đặt `faiss-cpu`)*.
 
@@ -88,6 +88,21 @@ npm install
 npm run dev
 ```
 Mở trình duyệt truy cập: **[http://localhost:5173](http://localhost:5173)**
+
+### 5. Chạy benchmark thật từ terminal hoặc Colab
+
+Trước tiên phải mount FracAtlas, chạy notebook index để tạo file `.faiss` và
+`*_metadata.json`, sau đó chạy:
+
+```bash
+python3 -m bonerag.evaluation.run_benchmark \
+  --encoder biomedclip --generator synth --cases 32
+```
+
+Tab **Đánh giá** trong React gọi đúng endpoint SSE này ở backend và hiển thị
+từng case, kết quả tổng hợp, fingerprint dataset và trạng thái fallback của
+generator. Nếu thiếu dataset hoặc artifact offline, hệ thống báo lỗi thay vì
+chuyển sang corpus minh họa.
 
 ---
 

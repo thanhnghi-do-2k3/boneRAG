@@ -1,13 +1,14 @@
-"""Automated Comparative Benchmark Matrix & Experiment Logger for BoneRAG.
+"""CLI for the reproducible FracAtlas Image-RAG benchmark.
 
-Runs evaluation matrix across 4 Generator models:
-1. LocalRAGSynthesizer (Pure Evidence Synthesizer - Fast Benchmark)
-2. Qwen2.5-0.5B-Instruct (HuggingFace Neural SLM)
-3. Qwen2.5-1.5B-Instruct (HuggingFace Neural SLM)
-4. SmolLM2-1.7B-Instruct (HuggingFace Neural SLM)
+This module intentionally does not read ``ground_truth.json``.  The query
+label comes from the real FracAtlas folder containing the selected image, and
+the same case list is used by the web benchmark endpoint.
 
-Usage:
-    python3 -m bonerag.evaluation.run_benchmark [--generator <synth|qwen05|qwen15|smol|all>] [--cases <count>]
+Examples::
+
+    python3 -m bonerag.evaluation.run_benchmark --generator synth
+    python3 -m bonerag.evaluation.run_benchmark --generator qwen05 --cases 32
+    python3 -m bonerag.evaluation.run_benchmark --generator all --cases 8
 """
 
 from __future__ import annotations
@@ -17,146 +18,182 @@ import json
 import sys
 import time
 from pathlib import Path
+from typing import Any
 
-from bonerag.evaluation.evaluator import BoneRAGEvaluator
+from bonerag.evaluation.benchmark import (
+    SYSTEMS,
+    aggregate_case_scores,
+    build_cases,
+    protocol_metadata,
+    run_system_case,
+)
 from bonerag.main_algo.encoder import get_multimodal_encoder
-from bonerag.main_algo.generator import LocalHuggingFaceGenerator, LocalRAGSynthesizer
+from bonerag.main_algo.generator import get_generator
 from bonerag.main_algo.pipeline import BoneRAGPipeline
 
 
-def run_benchmark_matrix(generator_mode: str = "synth", max_cases: int | None = None) -> list[dict]:
-    evaluator = BoneRAGEvaluator()
-    ground_truth = evaluator.ground_truth
-    if max_cases and max_cases > 0:
-        ground_truth = ground_truth[:max_cases]
+GENERATOR_MODES = {
+    "synth": "local_context_synth",
+    "qwen05": "qwen_05b",
+    "qwen15": "qwen_15b",
+    "smol": "smollm_17b",
+}
 
-    experiments_log_path = Path(__file__).resolve().parent / "experiments.jsonl"
 
-    baselines_to_test = [
-        ("1. No-RAG (Direct Zero-Shot)", "no_rag", "biomedclip"),
-        ("2. Text-Only RAG", "text_only", "hashing"),
-        ("3. Standard CLIP RAG (No Rerank/Gate)", "standard_clip", "clip_vit_b32"),
-        ("4. Proposed BoneRAG Pipeline", "full_bonerag", "biomedclip"),
+def _index_paths(encoder_name: str) -> tuple[Path, Path]:
+    repo_root = Path(__file__).resolve().parents[2]
+    index_name = (
+        "biomedclip"
+        if "biomed" in encoder_name
+        else "clip_vitl14"
+        if "l14" in encoder_name
+        else "clip_vitb32"
+    )
+    index_path = repo_root / f"fracatlas_{index_name}.faiss"
+    metadata_path = repo_root / f"fracatlas_{index_name}_metadata.json"
+    missing = [str(path) for path in (index_path, metadata_path) if not path.exists()]
+    if missing:
+        raise FileNotFoundError(
+            "Thiếu artifact offline của FracAtlas: " + ", ".join(missing) + ". "
+            "Hãy chạy notebook index trước; CLI không được phép dùng toy corpus."
+        )
+    return index_path, metadata_path
+
+
+def _make_pipeline(encoder_name: str, generator_name: str) -> BoneRAGPipeline:
+    index_path, metadata_path = _index_paths(encoder_name)
+    try:
+        encoder = get_multimodal_encoder(mode=encoder_name, strict=True)
+    except ModuleNotFoundError as exc:
+        raise RuntimeError(
+            "Thiếu dependency của encoder thật. Trên Colab hãy chạy: "
+            "pip install -q torch open_clip_torch faiss-cpu pillow tqdm huggingface_hub"
+        ) from exc
+    return BoneRAGPipeline(
+        encoder=encoder,
+        generator=get_generator(generator_name, strict=True),
+        top_k=4,
+        min_similarity=0.02,
+        index_path=index_path,
+        metadata_path=metadata_path,
+    )
+
+
+def _run_generator_matrix(
+    generator_name: str,
+    encoder_name: str,
+    cases_per_label: int,
+) -> dict[str, Any]:
+    pipeline = _make_pipeline(encoder_name, generator_name)
+    cases = build_cases(pipeline.records, cases_per_label=cases_per_label)
+    protocol = protocol_metadata(cases)
+    test_query_ids = {case.query_image_id for case in cases}
+    system_results: list[dict[str, Any]] = []
+
+    print(
+        f"[benchmark] {protocol['benchmark_version']} | "
+        f"{len(cases)} real images | encoder={encoder_name} | generator={generator_name}"
+    )
+    print(f"[benchmark] fingerprint={protocol['dataset_fingerprint']}")
+
+    for system in SYSTEMS:
+        case_scores: list[dict[str, Any]] = []
+        print(f"[benchmark] system={system['label']}")
+        for index, case in enumerate(cases, start=1):
+            result = run_system_case(pipeline, case, system, test_query_ids=test_query_ids)
+            case_scores.append(result)
+            print(
+                f"  [{index:02d}/{len(cases):02d}] {case.case_id} "
+                f"expected={result['expected_diagnosis']} "
+                f"top={result['predicted_top_diagnosis'] or 'none'} "
+                f"retrieval={result['retrieval_top1_label_accuracy']:.0f} "
+                f"latency={result['latency_ms']:.1f}ms"
+            )
+
+        summary = {
+            "system_key": system["key"],
+            "system_label": system["label"],
+            "description": system["description"],
+            **aggregate_case_scores(case_scores),
+        }
+        system_results.append(summary)
+
+    run_record: dict[str, Any] = {
+        "run_id": f"benchmark-{int(time.time() * 1000)}",
+        "created_at": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()),
+        "protocol": protocol,
+        "encoder": encoder_name,
+        "generator": generator_name,
+        "systems": system_results,
+    }
+    run_path = Path(__file__).resolve().parent / "benchmark_runs.jsonl"
+    with run_path.open("a", encoding="utf-8") as handle:
+        handle.write(json.dumps(run_record, ensure_ascii=False) + "\n")
+    return run_record
+
+
+def run_benchmark_matrix(
+    generator_mode: str = "synth",
+    max_cases: int | None = None,
+    encoder_name: str = "biomedclip",
+) -> list[dict[str, Any]]:
+    """Run the same real benchmark protocol as the web Evaluation tab.
+
+    ``max_cases`` is a total count and is rounded down to a balanced number;
+    for example, 32 means 16 Fractured + 16 Non_fractured cases.
+    """
+    modes = list(GENERATOR_MODES) if generator_mode == "all" else [generator_mode]
+    unknown = [mode for mode in modes if mode not in GENERATOR_MODES]
+    if unknown:
+        raise ValueError(f"Generator benchmark không hợp lệ: {', '.join(unknown)}")
+
+    cases_per_label = 16 if not max_cases else max(1, max_cases // 2)
+    runs = [
+        _run_generator_matrix(GENERATOR_MODES[mode], encoder_name, cases_per_label)
+        for mode in modes
+    ]
+    return [
+        {
+            "run_id": run["run_id"],
+            "generator": run["generator"],
+            "encoder": run["encoder"],
+            "protocol": run["protocol"],
+            **summary,
+        }
+        for run in runs
+        for summary in run["systems"]
     ]
 
-    generators_map = {
-        "synth": [("Local Synthesizer", LocalRAGSynthesizer())],
-        "qwen05": [("Qwen2.5-0.5B", LocalHuggingFaceGenerator("Qwen/Qwen2.5-0.5B-Instruct"))],
-        "qwen15": [("Qwen2.5-1.5B", LocalHuggingFaceGenerator("Qwen/Qwen2.5-1.5B-Instruct"))],
-        "smol": [("SmolLM2-1.7B", LocalHuggingFaceGenerator("HuggingFaceTB/SmolLM2-1.7B-Instruct"))],
-    }
 
-    if generator_mode == "all":
-        gens_to_run = [
-            ("Local Synthesizer", LocalRAGSynthesizer()),
-            ("Qwen2.5-0.5B", LocalHuggingFaceGenerator("Qwen/Qwen2.5-0.5B-Instruct")),
-            ("Qwen2.5-1.5B", LocalHuggingFaceGenerator("Qwen/Qwen2.5-1.5B-Instruct")),
-            ("SmolLM2-1.7B", LocalHuggingFaceGenerator("HuggingFaceTB/SmolLM2-1.7B-Instruct")),
-        ]
-    else:
-        gens_to_run = generators_map.get(generator_mode, generators_map["synth"])
-
-    results = []
-
-    for gen_label, generator in gens_to_run:
-        print(f"\n🧠 [Generator Evaluator] Active Model: {gen_label}")
-        for label, mode_key, enc_key in baselines_to_test:
-            config_label = f"{label} ({gen_label})"
-            print(f"   ⚡ Testing: {config_label} on {len(ground_truth)} cases...")
-            try:
-                encoder = get_multimodal_encoder(mode=enc_key)
-                pipeline = BoneRAGPipeline(encoder=encoder, generator=generator)
-
-                if mode_key == "standard_clip":
-                    pipeline.reranker.weight_anatomy = 0.0
-                    pipeline.reranker.weight_pathology = 0.0
-                    pipeline.reranker.hard_negative_penalty = 0.0
-
-                sessions = []
-                start_total = time.perf_counter()
-
-                for item in ground_truth:
-                    question = item["question"]
-                    t0 = time.perf_counter()
-
-                    if mode_key == "no_rag":
-                        answer = generator.generate(question, [], used_retrieval=False)
-                        t1 = time.perf_counter()
-                        latency_ms = int((t1 - t0) * 1000)
-                        sessions.append({
-                            "question_raw": question,
-                            "answer": answer,
-                            "evidence": [],
-                            "retrieval": {"hits": []},
-                            "latency_ms": latency_ms,
-                        })
-                    else:
-                        res = pipeline.answer(question)
-                        t1 = time.perf_counter()
-                        latency_ms = int((t1 - t0) * 1000)
-
-                        raw_hits = res.debug.get("raw_hits", [])
-                        hits_list = []
-                        for h in raw_hits:
-                            raw_id = h.get("record_id", "") if isinstance(h, dict) else getattr(h, "record_id", "")
-                            parent_id = raw_id.split("#")[0] if raw_id else ""
-                            score = h.get("score", 0.0) if isinstance(h, dict) else getattr(h, "score", 0.0)
-                            hits_list.append({"record_id": parent_id, "score": score})
-
-                        sessions.append({
-                            "question_raw": question,
-                            "answer": res.answer,
-                            "evidence": [{"image_id": ev.image_id, "rerank_score": ev.rerank_score} for ev in res.evidence],
-                            "retrieval": {"hits": hits_list},
-                            "latency_ms": latency_ms,
-                        })
-
-                elapsed_total = round(time.perf_counter() - start_total, 2)
-                agg = evaluator.aggregate(sessions)
-                agg["baseline_name"] = config_label
-                agg["mode_key"] = mode_key
-                agg["encoder_key"] = enc_key
-                agg["generator_type"] = gen_label
-                agg["total_time_sec"] = elapsed_total
-                results.append(agg)
-
-                with experiments_log_path.open("a", encoding="utf-8") as f:
-                    f.write(json.dumps(agg, ensure_ascii=False) + "\n")
-
-                print(
-                    f"      => Acc: {agg.get('answer_label_accuracy')} | "
-                    f"Faithfulness: {agg.get('faithfulness_score')} | Latency: {agg.get('latency_ms')} ms"
-                )
-
-            except Exception as exc:
-                print(f"      ⚠️ Error running {config_label}: {exc}")
-
-    return results
-
-
-def print_markdown_report(results: list[dict]) -> None:
-    print("\n" + "=" * 90)
-    print("📊 BONERAG SOTA MULTI-GENERATOR BENCHMARK REPORT")
-    print("=" * 90 + "\n")
-    print("| Cấu hình Thử nghiệm | Generator Model | Diagnosis Accuracy | Faithfulness Score | Latency (ms) |")
-    print("|---|---|---|---|---|")
-    for r in results:
-        label = r.get("baseline_name", "Unknown")
-        gen_name = r.get("generator_type", "Unknown")
-        acc = r.get("answer_label_accuracy", 0.0)
-        faith = r.get("faithfulness_score", 0.0)
-        lat = r.get("latency_ms", 0.0)
-        print(f"| {label} | {gen_name} | {acc:.4f} ({acc*100:.1f}%) | {faith:.4f} ({faith*100:.1f}%) | {lat:.1f} ms |")
-    print("\n" + "=" * 90 + "\n")
+def print_markdown_report(results: list[dict[str, Any]]) -> None:
+    print("\n| System | Generator | Top-1 label | Evidence P@4 | Answer label | Latency | Cases |")
+    print("|---|---|---:|---:|---:|---:|---:|")
+    for result in results:
+        print(
+            f"| {result['system_label']} | {result['generator']} | "
+            f"{result['retrieval_top1_label_accuracy']:.3f} | "
+            f"{result['evidence_label_precision_at_4']:.3f} | "
+            f"{result['answer_label_accuracy']:.3f} | "
+            f"{result['latency_ms']:.1f} ms | {result['n_cases']} |"
+        )
 
 
 def main() -> None:
-    parser = argparse.ArgumentParser(description="BoneRAG Multi-Model Benchmark Suite")
-    parser.add_argument("--generator", choices=["synth", "qwen05", "qwen15", "smol", "all"], default="synth")
-    parser.add_argument("--cases", type=int, default=None, help="Max test cases to run")
+    parser = argparse.ArgumentParser(description="BoneRAG real FracAtlas benchmark")
+    parser.add_argument("--generator", choices=[*GENERATOR_MODES, "all"], default="synth")
+    parser.add_argument("--encoder", choices=["biomedclip", "clip_vit_b32", "clip_vit_l14"], default="biomedclip")
+    parser.add_argument("--cases", type=int, default=32, help="Total balanced cases; default: 32")
     args = parser.parse_args()
 
-    results = run_benchmark_matrix(generator_mode=args.generator, max_cases=args.cases)
+    try:
+        results = run_benchmark_matrix(
+            generator_mode=args.generator,
+            max_cases=args.cases,
+            encoder_name=args.encoder,
+        )
+    except (FileNotFoundError, RuntimeError, ValueError, ModuleNotFoundError, OSError) as exc:
+        print(f"[benchmark] ERROR: {exc}", file=sys.stderr)
+        raise SystemExit(2) from exc
     print_markdown_report(results)
 
 

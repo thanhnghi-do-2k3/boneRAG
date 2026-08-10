@@ -45,3 +45,4 @@ yarn-error.log*
 Thumbs.db
 .vscode/
 .idea/
+bonerag/evaluation/benchmark_runs.jsonl

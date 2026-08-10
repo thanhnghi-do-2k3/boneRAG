@@ -72,6 +72,17 @@ def _discover_dataset_images_root() -> Path | None:
     return None
 
 
+@lru_cache(maxsize=8)
+def _dataset_image_lookup(root: str) -> dict[str, Path]:
+    """Build one basename lookup instead of recursively scanning per record."""
+    root_path = Path(root)
+    lookup: dict[str, Path] = {}
+    for candidate in root_path.rglob("*"):
+        if candidate.is_file():
+            lookup.setdefault(candidate.name.lower(), candidate)
+    return lookup
+
+
 @lru_cache(maxsize=4096)
 def resolve_dataset_image_path(image_path: str | None) -> Path | None:
     """Resolve metadata paths across local, Colab, and extracted dataset layouts."""
@@ -88,7 +99,9 @@ def resolve_dataset_image_path(image_path: str | None) -> Path | None:
     if root:
         filename = raw.name
         candidates.extend([root / filename, root / raw.parent.name / filename])
-        candidates.extend(root.rglob(filename))
+        indexed = _dataset_image_lookup(str(root)).get(filename.lower())
+        if indexed:
+            candidates.append(indexed)
 
     for candidate in candidates:
         try:
@@ -97,6 +110,18 @@ def resolve_dataset_image_path(image_path: str | None) -> Path | None:
             continue
         if resolved.is_file():
             return resolved
+    return None
+
+
+def infer_diagnosis_from_image_path(image_path: str | Path | None) -> str | None:
+    """Infer the binary FracAtlas label from the actual folder, not a substring."""
+    if not image_path:
+        return None
+    parts = {part.lower().replace("-", "_") for part in Path(image_path).parts}
+    if "non_fractured" in parts or "normal" in parts:
+        return "normal"
+    if "fractured" in parts:
+        return "fracture"
     return None
 
 

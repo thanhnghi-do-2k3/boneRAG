@@ -138,14 +138,20 @@ def _get_pipeline(config: dict | None = None) -> BoneRAGPipeline:
     cfg = config or _ACTIVE_CONFIG
     encoder_name = cfg.get("encoder", "biomedclip")
     gen_name = _normalize_generator_name(cfg.get("generator", "local_context_synth"))
-    key = f"{encoder_name}|{gen_name}|{cfg.get('top_k', 4)}|{cfg.get('min_similarity', 0.02)}"
+    key = f"{encoder_name}|{gen_name}|{cfg.get('top_k', 4)}|{cfg.get('min_similarity', 0.02)}|strict={bool(cfg.get('strict_encoder', False))}"
     with _PIPELINE_LOCK:
         if key not in _PIPELINE_CACHE:
             _MODEL_LOADING_STATUS[key] = "loading"
             _MODEL_LOADING_EVENTS[key] = threading.Event()
             try:
-                encoder = get_multimodal_encoder(mode=encoder_name)
-                generator = get_generator(gen_name)
+                encoder = get_multimodal_encoder(
+                    mode=encoder_name,
+                    strict=bool(cfg.get("strict_encoder", False)),
+                )
+                generator = get_generator(
+                    gen_name,
+                    strict=bool(cfg.get("strict_generator", False)),
+                )
 
                 # Locate pre-computed FAISS index & metadata for full FracAtlas dataset (4,082 X-rays)
                 repo_root = Path(__file__).resolve().parents[1]
@@ -473,76 +479,117 @@ class BoneRAGHandler(BaseHTTPRequestHandler):
             yield event
 
     def _live_benchmark_stream_events(self, encoder_name: str, generator_name: str) -> Iterator[dict[str, object]]:
-        """Run real-time benchmark suite and stream events over SSE."""
-        from main_algo.encoder import get_multimodal_encoder
-        from main_algo.generator import get_generator
-        from main_algo.pipeline import BoneRAGPipeline
+        """Run the reproducible real-image matrix and stream every case over SSE."""
+        from evaluation.benchmark import (
+            SYSTEMS,
+            build_cases,
+            protocol_metadata,
+            run_system_case,
+            aggregate_case_scores,
+        )
 
-        gt_cases = EVALUATOR.ground_truth
-        total_cases = len(gt_cases)
-
-        yield {
-            "type": "bench-start",
-            "total": total_cases,
+        config = {
             "encoder": encoder_name,
             "generator": generator_name,
-            "message": f"🚀 Bắt đầu Benchmark thực tế 30 ca test với Encoder={encoder_name}, Generator={generator_name}",
+            "top_k": 4,
+            "min_similarity": 0.02,
+            "strict_encoder": True,
+            "strict_generator": True,
         }
-
         try:
-            encoder_inst = get_multimodal_encoder(mode=encoder_name)
-            generator_inst = get_generator(name=generator_name)
-            pipe = BoneRAGPipeline(encoder=encoder_inst, generator=generator_inst)
+            pipe = _get_pipeline(config)
+            cases = build_cases(pipe.records, cases_per_label=16)
+            protocol = protocol_metadata(cases)
         except Exception as exc:
-            yield {"type": "bench-error", "message": f"Lỗi khởi tạo pipeline: {str(exc)}"}
+            yield {
+                "type": "bench-error",
+                "message": f"Không thể chuẩn bị benchmark dataset thật: {exc}",
+            }
             return
 
-        evaluated_sessions: list[dict[str, object]] = []
+        total_runs = len(cases) * len(SYSTEMS)
+        test_query_ids = {case.query_image_id for case in cases}
+        yield {
+            "type": "bench-start",
+            "total": total_runs,
+            "total_cases": len(cases),
+            "systems": [system["label"] for system in SYSTEMS],
+            "protocol": protocol,
+            "encoder": encoder_name,
+            "generator": generator_name,
+            "message": (
+                f"Bắt đầu {protocol['benchmark_version']}: {len(cases)} ảnh thật, "
+                f"{len(SYSTEMS)} hệ thống, toàn bộ test hold-out đã loại khỏi corpus."
+            ),
+        }
 
-        for idx, case in enumerate(gt_cases, start=1):
-            q = case["question"]
-            start_t = time.time()
-            res = pipe.answer(q)
-            lat_ms = (time.time() - start_t) * 1000.0
+        all_results: list[dict[str, object]] = []
+        completed = 0
+        for system in SYSTEMS:
+            for case_index, case in enumerate(cases, start=1):
+                try:
+                    result = run_system_case(pipe, case, system, test_query_ids=test_query_ids)
+                    result.update({
+                        "case_index": case_index,
+                        "total_cases": len(cases),
+                        "question": case.question,
+                        "system_description": system["description"],
+                    })
+                    all_results.append(result)
+                    completed += 1
+                    yield {
+                        "type": "bench-case",
+                        "index": completed,
+                        "total": total_runs,
+                        **result,
+                    }
+                except Exception as exc:
+                    yield {
+                        "type": "bench-error",
+                        "index": completed,
+                        "total": total_runs,
+                        "case_id": case.case_id,
+                        "system_key": system["key"],
+                        "system_label": system["label"],
+                        "message": f"Benchmark dừng để không ghi partial result: {exc}",
+                    }
+                    return
 
-            ev_ids = [e.image_id for e in res.evidence]
-            raw_hits = res.debug.get("raw_hits", [])
-            retrieved_raw_ids = [h.get("record_id", "") if isinstance(h, dict) else getattr(h, "record_id", "") for h in raw_hits]
+        system_summaries = []
+        for system in SYSTEMS:
+            scores = [item for item in all_results if item.get("system_key") == system["key"]]
+            system_summaries.append({
+                "system_key": system["key"],
+                "system_label": system["label"],
+                "description": system["description"],
+                **aggregate_case_scores(scores),
+            })
 
-            entry = {
-                "session_id": f"bench-live-{idx}",
-                "question": q,
-                "used_retrieval": res.used_retrieval,
-                "retrieved_evidence_ids": ev_ids,
-                "raw_retrieved_ids": retrieved_raw_ids,
-                "expected_evidence_ids": case.get("expected_evidence_ids", []),
-                "answer": res.answer,
-                "expected_diagnosis": case.get("expected_diagnosis", "fracture"),
-                "expected_body_part": case.get("expected_body_part", "wrist"),
-                "latency_ms": lat_ms,
-            }
-            scores = EVALUATOR.score_session(entry)
-            entry["eval_scores"] = scores
-            evaluated_sessions.append(entry)
+        run_record = {
+            "run_id": f"benchmark-{int(time.time() * 1000)}",
+            "created_at": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()),
+            "protocol": protocol,
+            "encoder": encoder_name,
+            "generator": generator_name,
+            "systems": system_summaries,
+            "cases": all_results,
+        }
+        run_path = Path(__file__).resolve().parents[1] / "bonerag" / "evaluation" / "benchmark_runs.jsonl"
+        try:
+            with run_path.open("a", encoding="utf-8") as fh:
+                fh.write(json.dumps(run_record, ensure_ascii=False) + "\n")
+        except OSError as exc:
+            print(f"[benchmark] log write failed: {exc}")
 
-            yield {
-                "type": "bench-case",
-                "index": idx,
-                "total": total_cases,
-                "question": q,
-                "expected_diagnosis": case.get("expected_diagnosis", "fracture"),
-                "retrieved_count": len(ev_ids),
-                "top_evidence": ev_ids[0] if ev_ids else "N/A",
-                "latency_ms": round(lat_ms, 2),
-                "scores": scores,
-            }
-
-        aggregated = EVALUATOR.aggregate(evaluated_sessions)
         yield {
             "type": "bench-complete",
-            "summary": aggregated,
-            "total_evaluated": len(evaluated_sessions),
-            "message": "✅ Hoàn tất Benchmark 30 ca test!",
+            "run_id": run_record["run_id"],
+            "summary": {
+                **protocol,
+                "systems": system_summaries,
+                "total_evaluated": len(all_results),
+            },
+            "message": "Hoàn tất benchmark thật và đã ghi benchmark_runs.jsonl.",
         }
 
     def _serve_frontend_asset(self, route: str) -> bool:
@@ -642,6 +689,20 @@ class BoneRAGHandler(BaseHTTPRequestHandler):
         if route == "/api/sessions":
             sessions = SESSION_LOGGER.load_all()
             self._send_json(sessions)
+            return
+
+        if route == "/api/benchmark-runs":
+            run_path = Path(__file__).resolve().parents[1] / "bonerag" / "evaluation" / "benchmark_runs.jsonl"
+            runs: list[dict[str, object]] = []
+            if run_path.exists():
+                with run_path.open("r", encoding="utf-8") as handle:
+                    for line in handle:
+                        try:
+                            if line.strip():
+                                runs.append(json.loads(line))
+                        except json.JSONDecodeError:
+                            continue
+            self._send_json(runs[-20:])
             return
 
         if route == "/api/run-live-benchmark":

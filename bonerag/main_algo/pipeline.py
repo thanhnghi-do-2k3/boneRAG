@@ -16,7 +16,12 @@ from pathlib import Path
 from typing import Iterator
 
 from .citation_synthesizer import EvidenceCitationSynthesizer
-from .data import ImageRecord, SAMPLE_RECORDS, resolve_dataset_image_path
+from .data import (
+    ImageRecord,
+    SAMPLE_RECORDS,
+    infer_diagnosis_from_image_path,
+    resolve_dataset_image_path,
+)
 from .encoder import BaseMultimodalEncoder, get_multimodal_encoder
 from .factuality import FactualityAuditor
 from .gating import EvidenceGate, GateDecision
@@ -89,13 +94,15 @@ class BoneRAGPipeline:
             for item in meta_list:
                 raw_image_path = item.get("image_path")
                 resolved_image_path = resolve_dataset_image_path(raw_image_path)
+                actual_diagnosis = infer_diagnosis_from_image_path(resolved_image_path or raw_image_path)
+                diagnosis = actual_diagnosis or item.get("diagnosis", "unknown")
                 loaded_records.append(
                     ImageRecord(
                         image_id=item.get("image_id", ""),
                         title=item.get("title", ""),
                         body_part=item.get("body_part", "unknown"),
-                        diagnosis=item.get("diagnosis", "unknown"),
-                        fracture_type=item.get("fracture_type", "unknown"),
+                        diagnosis=diagnosis,
+                        fracture_type="fractured" if diagnosis == "fracture" else "none" if diagnosis == "normal" else item.get("fracture_type", "unknown"),
                         region=item.get("region", "unknown"),
                         evidence_note=item.get("evidence_note", ""),
                         text=item.get("text", ""),
@@ -164,6 +171,8 @@ class BoneRAGPipeline:
         question: str,
         image_data_url: str | None = None,
         image_input: str | Path | None = None,
+        exclude_ids: set[str] | None = None,
+        image_alpha: float = 0.6,
     ) -> list[SearchHit]:
         """Online retrieval: encode query (text + optional image) and search index.
 
@@ -186,7 +195,7 @@ class BoneRAGPipeline:
                 pass
 
         if img_vec:
-            alpha = 0.6
+            alpha = max(0.0, min(1.0, image_alpha))
             query_vector = tuple(
                 (1 - alpha) * t + alpha * i
                 for t, i in zip(text_vec, img_vec)
@@ -206,6 +215,8 @@ class BoneRAGPipeline:
             match_type = parts[1] if len(parts) > 1 else "text_metadata"
 
             if parent_id not in self.record_by_id:
+                continue
+            if exclude_ids and parent_id in exclude_ids:
                 continue
 
             if parent_id not in best_hits_by_parent or hit.score > best_hits_by_parent[parent_id][0]:
@@ -268,15 +279,25 @@ class BoneRAGPipeline:
         question: str,
         image_data_url: str | None = None,
         image_input: str | Path | None = None,
+        exclude_ids: set[str] | None = None,
+        image_alpha: float = 0.6,
     ) -> Iterator[dict[str, object]]:
         """Alias for stream_answer used by HTTP server."""
-        return self.stream_answer(question, image_data_url=image_data_url, image_input=image_input)
+        return self.stream_answer(
+            question,
+            image_data_url=image_data_url,
+            image_input=image_input,
+            exclude_ids=exclude_ids,
+            image_alpha=image_alpha,
+        )
 
     def stream_answer(
         self,
         question: str,
         image_data_url: str | None = None,
         image_input: str | Path | None = None,
+        exclude_ids: set[str] | None = None,
+        image_alpha: float = 0.6,
     ) -> Iterator[dict[str, object]]:
         """Stream pipeline stages over Server-Sent Events.
 
@@ -301,7 +322,13 @@ class BoneRAGPipeline:
             "query_mode": query_mode,
         }
 
-        hits = self.retrieve(question, image_data_url=image_data_url, image_input=image_input)
+        hits = self.retrieve(
+            question,
+            image_data_url=image_data_url,
+            image_input=image_input,
+            exclude_ids=exclude_ids,
+            image_alpha=image_alpha,
+        )
         yield {
             "type": "stage",
             "stage": "retrieve-hits",

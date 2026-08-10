@@ -129,10 +129,12 @@ class LocalHuggingFaceGenerator(BaseGenerator):
     prior knowledge contamination, ensuring that output accuracy strictly reflects RAG quality.
     """
 
-    def __init__(self, model_name: str = "Qwen/Qwen2.5-0.5B-Instruct") -> None:
+    def __init__(self, model_name: str = "Qwen/Qwen2.5-0.5B-Instruct", strict: bool = False) -> None:
         self.model_name = model_name
         self._tokenizer: Any = None
         self._model: Any = None
+        self.fallback_used = False
+        self.strict = strict
 
     def _get_model_and_tokenizer(self) -> tuple[Any, Any]:
         if self._model is None:
@@ -153,6 +155,7 @@ class LocalHuggingFaceGenerator(BaseGenerator):
     def generate_stream(self, question: str, evidence: list["Evidence"], used_retrieval: bool):
         """Stream generated tokens live as they are produced by the neural network."""
         prompt = _build_rag_prompt(question, evidence, used_retrieval)
+        self.fallback_used = False
         try:
             import threading
             from transformers import TextIteratorStreamer
@@ -171,6 +174,9 @@ class LocalHuggingFaceGenerator(BaseGenerator):
                 yield token
             thread.join()
         except Exception as exc:
+            if self.strict:
+                raise
+            self.fallback_used = True
             text = LocalRAGSynthesizer().generate(question, evidence, used_retrieval)
             for chunk in text.split(" "):
                 yield chunk + " "
@@ -227,11 +233,11 @@ def get_generator(name: str = "local_context_synth", **kwargs: Any) -> BaseGener
         name: "local_context_synth" | "qwen_05b" | "qwen_15b" | "smollm_17b" | "ollama_local"
     """
     if name == "qwen_05b":
-        return LocalHuggingFaceGenerator("Qwen/Qwen2.5-0.5B-Instruct")
+        return LocalHuggingFaceGenerator("Qwen/Qwen2.5-0.5B-Instruct", strict=kwargs.get("strict", False))
     if name == "qwen_15b":
-        return LocalHuggingFaceGenerator("Qwen/Qwen2.5-1.5B-Instruct")
+        return LocalHuggingFaceGenerator("Qwen/Qwen2.5-1.5B-Instruct", strict=kwargs.get("strict", False))
     if name == "smollm_17b":
-        return LocalHuggingFaceGenerator("HuggingFaceTB/SmolLM2-1.7B-Instruct")
+        return LocalHuggingFaceGenerator("HuggingFaceTB/SmolLM2-1.7B-Instruct", strict=kwargs.get("strict", False))
     if name == "ollama_local":
         model = kwargs.get("model", "qwen2.5:0.5b")
         host = kwargs.get("host", "http://localhost:11434")
@@ -270,4 +276,3 @@ AVAILABLE_GENERATORS = {
         "default_model": "qwen2.5:0.5b",
     },
 }
-

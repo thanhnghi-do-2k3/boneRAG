@@ -1,16 +1,24 @@
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import { ScreenHeader } from '../design-system/ScreenHeader';
-import { openBenchmarkStream } from '../services/boneragApi';
+import { fetchBenchmarkRuns, openBenchmarkStream } from '../services/boneragApi';
+
+const percent = (value) => (Number.isFinite(Number(value)) ? `${(Number(value) * 100).toFixed(1)}%` : '—');
+const decimal = (value) => (Number.isFinite(Number(value)) ? Number(value).toFixed(3) : '—');
 
 export function EvaluationScreen() {
   const [encoder, setEncoder] = useState('biomedclip');
   const [generator, setGenerator] = useState('local_context_synth');
   const [isRunning, setIsRunning] = useState(false);
   const [logs, setLogs] = useState([]);
-  const [progress, setProgress] = useState({ current: 0, total: 30 });
+  const [progress, setProgress] = useState({ current: 0, total: 128 });
   const [completedSummary, setCompletedSummary] = useState(null);
   const [evaluatedCases, setEvaluatedCases] = useState([]);
+  const [savedRuns, setSavedRuns] = useState([]);
   const logEndRef = useRef(null);
+
+  useEffect(() => {
+    fetchBenchmarkRuns().then(setSavedRuns).catch(() => setSavedRuns([]));
+  }, []);
 
   useEffect(() => {
     logEndRef.current?.scrollIntoView({ behavior: 'smooth' });
@@ -21,24 +29,33 @@ export function EvaluationScreen() {
     setLogs([]);
     setEvaluatedCases([]);
     setCompletedSummary(null);
-    setProgress({ current: 0, total: 30 });
 
     const eventSource = openBenchmarkStream({ encoder, generator });
-
     eventSource.onmessage = (event) => {
       try {
         const data = JSON.parse(event.data);
         if (data.type === 'bench-start') {
-          setLogs((prev) => [...prev, `[INIT] ${data.message}`]);
+          setLogs((prev) => [...prev, `[INIT] ${data.message}`, `[PROTOCOL] ${data.protocol?.dataset_fingerprint || 'pending'} | ${data.total_cases} cases x ${data.systems.length} systems`]);
           setProgress({ current: 0, total: data.total });
         } else if (data.type === 'bench-case') {
-          const logLine = `[CASE ${data.index}/${data.total}] "${data.question.slice(0, 45)}..." | TopMatch: ${data.top_evidence} | Latency: ${data.latency_ms}ms`;
+          const fallbackNote = data.generator_fallback ? ' | GENERATOR_FALLBACK' : '';
+          const logLine = `[${data.system_label}] ${data.case_id} | expected=${data.expected_diagnosis} | top=${data.predicted_top_diagnosis || 'none'} | retrieval=${percent(data.retrieval_top1_label_accuracy)} | latency=${data.latency_ms}ms${fallbackNote}`;
           setLogs((prev) => [...prev, logLine]);
           setProgress({ current: data.index, total: data.total });
           setEvaluatedCases((prev) => [...prev, data]);
+        } else if (data.type === 'bench-case-error') {
+          setLogs((prev) => [...prev, `[ERROR] ${data.system_label} ${data.case_id}: ${data.message}`]);
+          setProgress({ current: data.index, total: data.total });
         } else if (data.type === 'bench-complete') {
-          setLogs((prev) => [...prev, `[COMPLETE] ${data.message}`]);
+          setLogs((prev) => [...prev, `[COMPLETE] ${data.message}`, `[RUN] ${data.run_id}`]);
           setCompletedSummary(data.summary);
+          setSavedRuns((prev) => [{
+            run_id: data.run_id,
+            protocol: data.summary,
+            encoder,
+            generator,
+            systems: data.summary.systems,
+          }, ...prev.filter((run) => run.run_id !== data.run_id)].slice(0, 20));
           setIsRunning(false);
           eventSource.close();
         } else if (data.type === 'bench-error') {
@@ -47,183 +64,149 @@ export function EvaluationScreen() {
           eventSource.close();
         }
       } catch (err) {
-        console.error('Failed to parse SSE event:', err);
+        console.error('Failed to parse benchmark SSE event:', err);
       }
     };
 
     eventSource.onerror = (err) => {
-      setLogs((prev) => [...prev, `[STREAM ERROR] Kết nối backend bị đóng: ${err?.message || 'không nhận được sự kiện hoàn tất'}. Kiểm tra VITE_API_BASE_URL và Colab URL.`]);
+      setLogs((prev) => [...prev, `[STREAM ERROR] ${err?.message || 'Kết nối benchmark bị đóng.'}`]);
       setIsRunning(false);
       eventSource.close();
     };
   };
 
+  const downloadRun = () => {
+    const payload = {
+      protocol: completedSummary,
+      cases: evaluatedCases,
+      exported_at: new Date().toISOString(),
+    };
+    const blob = new Blob([JSON.stringify(payload, null, 2)], { type: 'application/json' });
+    const url = URL.createObjectURL(blob);
+    const anchor = document.createElement('a');
+    anchor.href = url;
+    anchor.download = `bonerag-benchmark-${Date.now()}.json`;
+    anchor.click();
+    URL.revokeObjectURL(url);
+  };
+
+  const systems = completedSummary?.systems || [];
+
   return (
     <section className="screen">
       <ScreenHeader
-        eyebrow="So sánh Khoa học Minh bạch"
-        title="📊 Thử nghiệm & Benchmark Trực tiếp (Live Execution)"
-        description="Chọn cấu hình mô hình và khởi chạy suy luận thực tế trên 30 ca test y khoa. Giám sát luồng xử lý dòng-theo-dòng qua màn hình Terminal."
+        eyebrow="Đánh giá reproducible"
+        title="Benchmark Image RAG thật"
+        description="Một bộ ảnh FracAtlas cố định, toàn bộ test hold-out bị loại khỏi corpus, rồi chạy lần lượt bốn hệ thống để so sánh công bằng."
       />
 
-      {/* Control Panel Panel */}
-      <div className="panel" style={{ marginBottom: '1.5rem', background: 'var(--panel-bg, #1a1e29)', padding: '1.5rem', borderRadius: '12px', border: '1px solid rgba(255,255,255,0.08)' }}>
-        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))', gap: '1rem', alignItems: 'end' }}>
-          <div>
-            <label style={{ display: 'block', fontSize: '0.85rem', color: '#94a3b8', marginBottom: '0.4rem', fontWeight: '600' }}>Encoder Backbone:</label>
-            <select
-              value={encoder}
-              onChange={(e) => setEncoder(e.target.value)}
-              disabled={isRunning}
-              style={{ width: '100%', padding: '0.6rem 0.8rem', background: '#0f172a', color: '#f8fafc', border: '1px solid #334155', borderRadius: '8px', fontSize: '0.9rem' }}
-            >
-              <option value="biomedclip">BiomedCLIP (Microsoft - ViT-B/16)</option>
-              <option value="clip_vit_b32">OpenAI CLIP (ViT-B/32)</option>
-              <option value="clip_vit_l14">OpenAI CLIP (ViT-L/14 High-Res)</option>
-              <option value="resnet_text">ResNet50 + Medical Embedder</option>
-            </select>
-          </div>
-
-          <div>
-            <label style={{ display: 'block', fontSize: '0.85rem', color: '#94a3b8', marginBottom: '0.4rem', fontWeight: '600' }}>Answer Generator:</label>
-            <select
-              value={generator}
-              onChange={(e) => setGenerator(e.target.value)}
-              disabled={isRunning}
-              style={{ width: '100%', padding: '0.6rem 0.8rem', background: '#0f172a', color: '#f8fafc', border: '1px solid #334155', borderRadius: '8px', fontSize: '0.9rem' }}
-            >
-              <option value="local_context_synth">BoneRAG Evidence Synthesizer (0% Prior Leakage)</option>
-              <option value="qwen_05b">Qwen2.5-0.5B Local SLM (0.5B Params)</option>
-              <option value="qwen_15b">Qwen2.5-1.5B Local SLM (1.5B Params)</option>
-              <option value="smollm_17b">SmolLM2-1.7B Local SLM (1.7B Params)</option>
-            </select>
-          </div>
-
-          <div>
-            <button
-              onClick={handleRunBenchmark}
-              disabled={isRunning}
-              style={{
-                width: '100%',
-                padding: '0.75rem 1.2rem',
-                background: isRunning ? '#475569' : 'linear-gradient(135deg, #0ea5e9 0%, #2563eb 100%)',
-                color: '#ffffff',
-                fontWeight: '700',
-                fontSize: '0.95rem',
-                border: 'none',
-                borderRadius: '8px',
-                cursor: isRunning ? 'not-allowed' : 'pointer',
-                boxShadow: '0 4px 12px rgba(14, 165, 233, 0.3)',
-                transition: 'all 0.2s ease',
-              }}
-            >
-              {isRunning ? `⏳ Đang chạy (${progress.current}/${progress.total})...` : '▶️ Bắt đầu Chạy Benchmark Thực Tế'}
-            </button>
-          </div>
+      <div className="panel benchmark-history-panel">
+        <div className="benchmark-panel-heading">
+          <div><span className="eyebrow">Run history</span><h3>Các lần benchmark gần đây</h3></div>
+          <span>{savedRuns.length} runs</span>
         </div>
-
-        {/* Progress Bar */}
-        {isRunning && (
-          <div style={{ marginTop: '1.2rem' }}>
-            <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.8rem', color: '#38bdf8', marginBottom: '0.3rem' }}>
-              <span>Tiến độ thực thi câu hỏi y khoa:</span>
-              <span>{Math.round((progress.current / progress.total) * 100)}%</span>
-            </div>
-            <div style={{ height: '8px', background: '#0f172a', borderRadius: '4px', overflow: 'hidden' }}>
-              <div style={{ width: `${(progress.current / progress.total) * 100}%`, height: '100%', background: 'linear-gradient(90deg, #38bdf8, #818cf8)', transition: 'width 0.3s ease' }} />
-            </div>
+        {savedRuns.length === 0 ? (
+          <p className="benchmark-empty-history">Chưa có run được lưu trên backend.</p>
+        ) : (
+          <div className="benchmark-history-list">
+            {savedRuns.map((run) => (
+              <div className="benchmark-history-item" key={run.run_id}>
+                <strong>{run.run_id}</strong>
+                <span>{run.encoder || 'biomedclip'} · {run.generator || 'synth'} · {run.protocol?.dataset_fingerprint || '—'}</span>
+              </div>
+            ))}
           </div>
         )}
       </div>
 
-      {/* Terminal Live Logger */}
-      <div className="panel" style={{ marginBottom: '1.5rem', background: '#090d16', padding: '1.2rem', borderRadius: '12px', border: '1px solid #1e293b', fontFamily: 'monospace' }}>
-        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '0.8rem', borderBottom: '1px solid #1e293b', paddingBottom: '0.5rem' }}>
-          <span style={{ color: '#38bdf8', fontSize: '0.85rem', fontWeight: '700' }}>🖥️ LIVE SSE TERMINAL MONITOR</span>
-          <span style={{ color: '#64748b', fontSize: '0.75rem' }}>{logs.length} events logged</span>
+      <div className="panel" style={{ marginBottom: '1.5rem', padding: '1.25rem', borderRadius: '16px' }}>
+        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(230px, 1fr))', gap: '1rem', alignItems: 'end' }}>
+          <label>
+            <span className="config-field-label">Encoder dùng chung</span>
+            <select className="config-select" value={encoder} onChange={(event) => setEncoder(event.target.value)} disabled={isRunning}>
+              <option value="biomedclip">BiomedCLIP (medical)</option>
+              <option value="clip_vit_b32">OpenAI CLIP ViT-B/32</option>
+              <option value="clip_vit_l14">OpenAI CLIP ViT-L/14</option>
+            </select>
+          </label>
+          <label>
+            <span className="config-field-label">Generator dùng chung</span>
+            <select className="config-select" value={generator} onChange={(event) => setGenerator(event.target.value)} disabled={isRunning}>
+              <option value="local_context_synth">Evidence Synthesizer</option>
+              <option value="qwen_05b">Qwen2.5-0.5B</option>
+              <option value="qwen_15b">Qwen2.5-1.5B</option>
+              <option value="smollm_17b">SmolLM2-1.7B</option>
+            </select>
+          </label>
+          <button className="primary-button" onClick={handleRunBenchmark} disabled={isRunning}>
+            {isRunning ? `Đang chạy ${progress.current}/${progress.total}` : 'Chạy benchmark thật'}
+          </button>
         </div>
-        <div style={{ height: '220px', overflowY: 'auto', fontSize: '0.82rem', lineHeight: '1.5', color: '#e2e8f0' }}>
-          {logs.length === 0 ? (
-            <p style={{ color: '#475569', fontStyle: 'italic' }}>Ấn nút "Bắt đầu Chạy Benchmark Thực Tế" phía trên để theo dõi kết quả chạy từng ca test dòng-theo-dòng...</p>
-          ) : (
-            logs.map((log, idx) => (
-              <div key={idx} style={{ color: log.includes('COMPLETE') ? '#4ade80' : log.includes('ERROR') ? '#f87171' : log.includes('INIT') ? '#38bdf8' : '#cbd5e1' }}>
-                {log}
-              </div>
-            ))
-          )}
+        {isRunning && (
+          <div style={{ marginTop: '1rem' }}>
+            <div className="benchmark-progress-label"><span>Tiến độ ma trận</span><span>{Math.round((progress.current / progress.total) * 100)}%</span></div>
+            <div className="benchmark-progress"><span style={{ width: `${(progress.current / progress.total) * 100}%` }} /></div>
+          </div>
+        )}
+      </div>
+
+      <div className="panel benchmark-log-panel">
+        <div className="benchmark-panel-heading">
+          <div><span className="eyebrow">Live log</span><h3>Luồng chạy từng case</h3></div>
+          <span>{logs.length} events</span>
+        </div>
+        <div className="benchmark-log-lines">
+          {logs.length === 0 ? <p>Chưa chạy. Backend sẽ từ chối chạy nếu không tìm thấy dataset FracAtlas thật.</p> : logs.map((log, index) => <div key={`${log}-${index}`}>{log}</div>)}
           <div ref={logEndRef} />
         </div>
       </div>
 
-      {/* Aggregate Results Cards */}
       {completedSummary && (
-        <div style={{ marginBottom: '1.5rem', display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(160px, 1fr))', gap: '1rem' }}>
-          <div style={{ background: '#0f172a', padding: '1rem', borderRadius: '10px', border: '1px solid #0284c7', textAlign: 'center' }}>
-            <p style={{ fontSize: '0.75rem', color: '#38bdf8', margin: 0, fontWeight: '600' }}>DIAGNOSIS ACCURACY</p>
-            <h2 style={{ fontSize: '1.8rem', color: '#38bdf8', margin: '0.3rem 0 0 0', fontWeight: '800' }}>
-              {(completedSummary.answer_label_accuracy * 100).toFixed(1)}%
-            </h2>
+        <>
+          <div className="benchmark-result-heading">
+            <div><span className="eyebrow">Result matrix</span><h3>So sánh trên cùng bộ test</h3><p>{completedSummary.dataset} · fingerprint {completedSummary.dataset_fingerprint} · {completedSummary.n_cases} ảnh · test hold-out excluded</p></div>
+            <button className="secondary-button" onClick={downloadRun}>Tải JSON kết quả</button>
           </div>
-          <div style={{ background: '#0f172a', padding: '1rem', borderRadius: '10px', border: '1px solid #10b981', textAlign: 'center' }}>
-            <p style={{ fontSize: '0.75rem', color: '#34d399', margin: 0, fontWeight: '600' }}>FAITHFULNESS SCORE</p>
-            <h2 style={{ fontSize: '1.8rem', color: '#34d399', margin: '0.3rem 0 0 0', fontWeight: '800' }}>
-              {(completedSummary.faithfulness_score * 100).toFixed(1)}%
-            </h2>
-          </div>
-          <div style={{ background: '#0f172a', padding: '1rem', borderRadius: '10px', border: '1px solid #818cf8', textAlign: 'center' }}>
-            <p style={{ fontSize: '0.75rem', color: '#818cf8', margin: 0, fontWeight: '600' }}>RECALL@4</p>
-            <h2 style={{ fontSize: '1.8rem', color: '#818cf8', margin: '0.3rem 0 0 0', fontWeight: '800' }}>
-              {completedSummary.recall_at_k.toFixed(4)}
-            </h2>
-          </div>
-          <div style={{ background: '#0f172a', padding: '1rem', borderRadius: '10px', border: '1px solid #a855f7', textAlign: 'center' }}>
-            <p style={{ fontSize: '0.75rem', color: '#c084fc', margin: 0, fontWeight: '600' }}>MRR</p>
-            <h2 style={{ fontSize: '1.8rem', color: '#c084fc', margin: '0.3rem 0 0 0', fontWeight: '800' }}>
-              {completedSummary.mrr.toFixed(4)}
-            </h2>
-          </div>
-          <div style={{ background: '#0f172a', padding: '1rem', borderRadius: '10px', border: '1px solid #f59e0b', textAlign: 'center' }}>
-            <p style={{ fontSize: '0.75rem', color: '#fbbf24', margin: 0, fontWeight: '600' }}>AVG LATENCY</p>
-            <h2 style={{ fontSize: '1.8rem', color: '#fbbf24', margin: '0.3rem 0 0 0', fontWeight: '800' }}>
-              {completedSummary.latency_ms.toFixed(1)} ms
-            </h2>
-          </div>
-        </div>
-      )}
-
-      {/* Evaluated Cases Table */}
-      {evaluatedCases.length > 0 && (
-        <div className="panel" style={{ background: 'var(--panel-bg, #1a1e29)', padding: '1.2rem', borderRadius: '12px', border: '1px solid rgba(255,255,255,0.08)' }}>
-          <h3 style={{ fontSize: '1.1rem', marginBottom: '1rem', color: '#f8fafc' }}>📋 Chi tiết Kết quả 30 Ca Test Lâm Sàng</h3>
-          <div style={{ overflowX: 'auto' }}>
-            <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '0.85rem', color: '#cbd5e1' }}>
-              <thead>
-                <tr style={{ background: '#0f172a', textAlign: 'left', borderBottom: '2px solid #334155' }}>
-                  <th style={{ padding: '0.6rem 0.8rem' }}>#</th>
-                  <th style={{ padding: '0.6rem 0.8rem' }}>Câu hỏi Y Khoa</th>
-                  <th style={{ padding: '0.6rem 0.8rem' }}>Nhãn Chẩn đoán</th>
-                  <th style={{ padding: '0.6rem 0.8rem' }}>Bằng chứng Top-1</th>
-                  <th style={{ padding: '0.6rem 0.8rem' }}>Độ trễ</th>
-                </tr>
-              </thead>
+          <div className="benchmark-table-wrap panel">
+            <table className="benchmark-table">
+              <thead><tr><th>System</th><th>Top-1 label</th><th>Evidence P@4</th><th>Answer label</th><th>Latency</th><th>Fallback generator</th><th>Cases</th></tr></thead>
               <tbody>
-                {evaluatedCases.map((c) => (
-                  <tr key={c.index} style={{ borderBottom: '1px solid #1e293b' }}>
-                    <td style={{ padding: '0.6rem 0.8rem', fontWeight: '700', color: '#38bdf8' }}>{c.index}</td>
-                    <td style={{ padding: '0.6rem 0.8rem' }}>{c.question}</td>
-                    <td style={{ padding: '0.6rem 0.8rem' }}>
-                      <span style={{ padding: '0.2rem 0.5rem', borderRadius: '4px', background: c.expected_diagnosis === 'fracture' ? 'rgba(239,68,68,0.2)' : 'rgba(34,197,94,0.2)', color: c.expected_diagnosis === 'fracture' ? '#f87171' : '#4ade80', fontSize: '0.75rem', fontWeight: '700' }}>
-                        {c.expected_diagnosis.toUpperCase()}
-                      </span>
-                    </td>
-                    <td style={{ padding: '0.6rem 0.8rem', fontFamily: 'monospace', color: '#94a3b8' }}>{c.top_evidence}</td>
-                    <td style={{ padding: '0.6rem 0.8rem', color: '#fbbf24' }}>{c.latency_ms} ms</td>
+                {systems.map((system) => (
+                  <tr key={system.system_key} className={system.system_key === 'bonerag' ? 'highlight-row' : ''}>
+                    <td><strong>{system.system_label}</strong><small>{system.description}</small></td>
+                    <td>{percent(system.retrieval_top1_label_accuracy)}</td>
+                    <td>{percent(system.evidence_label_precision_at_4)}</td>
+                    <td>{percent(system.answer_label_accuracy)}</td>
+                    <td>{decimal(system.latency_ms)} ms</td>
+                    <td>{percent(system.generator_fallback_rate)}</td>
+                    <td>{system.n_cases}</td>
                   </tr>
                 ))}
               </tbody>
             </table>
           </div>
+        </>
+      )}
+
+      {evaluatedCases.length > 0 && (
+        <div className="benchmark-table-wrap panel">
+          <div className="benchmark-panel-heading"><div><span className="eyebrow">Case audit</span><h3>Chi tiết từng ảnh và từng system</h3></div><span>{evaluatedCases.length} rows</span></div>
+          <table className="benchmark-table case-table">
+            <thead><tr><th>Case</th><th>System</th><th>Expected</th><th>Predicted</th><th>Evidence</th><th>Answer</th><th>Latency</th></tr></thead>
+            <tbody>
+              {evaluatedCases.map((item, index) => (
+                <tr key={`${item.system_key}-${item.case_id}-${index}`}>
+                  <td><strong>{item.case_id}</strong><small>{item.query_image_id}</small></td>
+                  <td>{item.system_label}</td>
+                  <td>{item.expected_diagnosis}</td>
+                  <td>{item.predicted_top_diagnosis || 'none'}</td>
+                  <td>{percent(item.retrieval_top1_label_accuracy)}</td>
+                  <td>{percent(item.answer_label_accuracy)}</td>
+                  <td>{item.latency_ms} ms</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
         </div>
       )}
     </section>

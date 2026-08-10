@@ -1,0 +1,8 @@
+# Runtime dependencies for the real FracAtlas benchmark.
+torch
+open_clip_torch
+faiss-cpu
+pillow
+tqdm
+huggingface_hub
+transformers
