@@ -1,9 +1,48 @@
 import React, { useEffect, useRef, useState } from 'react';
 import { ScreenHeader } from '../design-system/ScreenHeader';
-import { fetchBenchmarkRuns, openBenchmarkStream } from '../services/boneragApi';
+import { analyzeBenchmarkRun, fetchBenchmarkRuns, openBenchmarkStream } from '../services/boneragApi';
 
 const percent = (value) => (Number.isFinite(Number(value)) ? `${(Number(value) * 100).toFixed(1)}%` : '—');
 const decimal = (value) => (Number.isFinite(Number(value)) ? Number(value).toFixed(3) : '—');
+
+const chartMetrics = [
+  ['retrieval_top1_label_accuracy', 'Top-1'],
+  ['evidence_label_precision_at_4', 'P@4'],
+  ['evidence_label_mrr', 'MRR'],
+  ['evidence_label_ndcg_at_4', 'nDCG@4'],
+  ['answer_label_accuracy', 'Answer'],
+];
+
+function BenchmarkChart({ systems }) {
+  if (!systems.length) return null;
+  return (
+    <div className="benchmark-chart panel">
+      <div className="benchmark-panel-heading">
+        <div><span className="eyebrow">Metric chart</span><h3>Biểu đồ so sánh nhanh</h3></div>
+        <span>{systems.length} systems</span>
+      </div>
+      <div className="benchmark-chart-grid">
+        {chartMetrics.map(([key, label]) => (
+          <div className="benchmark-chart-metric" key={key}>
+            <strong>{label}</strong>
+            <div className="benchmark-bars">
+              {systems.map((system) => {
+                const value = Number(system[key]) || 0;
+                return (
+                  <div className="benchmark-bar-row" key={`${key}-${system.system_key}`}>
+                    <span>{system.system_label}</span>
+                    <div><i style={{ width: `${Math.max(2, value * 100)}%` }} /></div>
+                    <em>{percent(value)}</em>
+                  </div>
+                );
+              })}
+            </div>
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+}
 
 export function EvaluationScreen() {
   const [encoder, setEncoder] = useState('biomedclip');
@@ -14,6 +53,8 @@ export function EvaluationScreen() {
   const [completedSummary, setCompletedSummary] = useState(null);
   const [evaluatedCases, setEvaluatedCases] = useState([]);
   const [savedRuns, setSavedRuns] = useState([]);
+  const [analysis, setAnalysis] = useState(null);
+  const [isAnalyzing, setIsAnalyzing] = useState(false);
   const logEndRef = useRef(null);
 
   useEffect(() => {
@@ -29,6 +70,7 @@ export function EvaluationScreen() {
     setLogs([]);
     setEvaluatedCases([]);
     setCompletedSummary(null);
+    setAnalysis(null);
 
     const eventSource = openBenchmarkStream({ encoder, generator });
     eventSource.onmessage = (event) => {
@@ -39,7 +81,8 @@ export function EvaluationScreen() {
           setProgress({ current: 0, total: data.total });
         } else if (data.type === 'bench-case') {
           const fallbackNote = data.generator_fallback ? ' | GENERATOR_FALLBACK' : '';
-          const logLine = `[${data.system_label}] ${data.case_id} | expected=${data.expected_diagnosis} | top=${data.predicted_top_diagnosis || 'none'} | retrieval=${percent(data.retrieval_top1_label_accuracy)} | latency=${data.latency_ms}ms${fallbackNote}`;
+          const answerNote = data.answer_predicted_diagnosis ? ` | answer=${data.answer_predicted_diagnosis}` : ' | answer=unknown';
+          const logLine = `[${data.system_label}] ${data.case_id} | expected=${data.expected_diagnosis} | top=${data.predicted_top_diagnosis || 'none'}${answerNote} | retrieval=${percent(data.retrieval_top1_label_accuracy)} | latency=${data.latency_ms}ms${fallbackNote}`;
           setLogs((prev) => [...prev, logLine]);
           setProgress({ current: data.index, total: data.total });
           setEvaluatedCases((prev) => [...prev, data]);
@@ -88,6 +131,23 @@ export function EvaluationScreen() {
     anchor.download = `bonerag-benchmark-${Date.now()}.json`;
     anchor.click();
     URL.revokeObjectURL(url);
+  };
+
+  const handleAnalyze = async () => {
+    if (!completedSummary) return;
+    setIsAnalyzing(true);
+    setAnalysis(null);
+    try {
+      const result = await analyzeBenchmarkRun({
+        summary: completedSummary,
+        cases: evaluatedCases,
+      });
+      setAnalysis(result);
+    } catch (err) {
+      setAnalysis({ ok: false, source: 'client_error', analysis: err?.message || 'Không gọi được API nhận xét.' });
+    } finally {
+      setIsAnalyzing(false);
+    }
   };
 
   const systems = completedSummary?.systems || [];
@@ -165,18 +225,69 @@ export function EvaluationScreen() {
         <>
           <div className="benchmark-result-heading">
             <div><span className="eyebrow">Result matrix</span><h3>So sánh trên cùng bộ test</h3><p>{completedSummary.dataset} · fingerprint {completedSummary.dataset_fingerprint} · {completedSummary.n_cases} ảnh · test hold-out excluded</p></div>
-            <button className="secondary-button" onClick={downloadRun}>Tải JSON kết quả</button>
+            <div className="benchmark-result-actions">
+              <button className="secondary-button" onClick={handleAnalyze} disabled={isAnalyzing}>
+                {isAnalyzing ? 'Đang nhận xét...' : 'Nhận xét bằng Gemini'}
+              </button>
+              <button className="secondary-button" onClick={downloadRun}>Tải JSON kết quả</button>
+            </div>
           </div>
+          <BenchmarkChart systems={systems} />
+          {analysis && (
+            <div className="benchmark-analysis panel">
+              <div className="benchmark-panel-heading">
+                <div><span className="eyebrow">Analysis</span><h3>Nhận xét benchmark</h3></div>
+                <span>{analysis.source || 'local'}</span>
+              </div>
+              <pre>{analysis.analysis}</pre>
+            </div>
+          )}
           <div className="benchmark-table-wrap panel">
             <table className="benchmark-table">
-              <thead><tr><th>System</th><th>Top-1 label</th><th>Evidence P@4</th><th>Answer label</th><th>Latency</th><th>Fallback generator</th><th>Cases</th></tr></thead>
+              <thead>
+                <tr>
+                  <th>System</th>
+                  <th>Top-1 label</th>
+                  <th>Retrieval F1</th>
+                  <th>Sens / Spec</th>
+                  <th>Evidence P@4</th>
+                  <th>Recall/MRR/nDCG</th>
+                  <th>Answer label</th>
+                  <th>Answer F1</th>
+                  <th>Answer BalAcc</th>
+                  <th>Latency</th>
+                  <th>Fallback generator</th>
+                  <th>Cases</th>
+                </tr>
+              </thead>
               <tbody>
                 {systems.map((system) => (
                   <tr key={system.system_key} className={system.system_key === 'bonerag' ? 'highlight-row' : ''}>
-                    <td><strong>{system.system_label}</strong><small>{system.description}</small></td>
+                    <td>
+                      <strong>{system.system_label}</strong>
+                      {system.paper_reference && <small className="paper-proxy">{system.paper_reference}</small>}
+                      <small>{system.description}</small>
+                    </td>
                     <td>{percent(system.retrieval_top1_label_accuracy)}</td>
+                    <td>
+                      {percent(system.retrieval_f1)}
+                      <small>Bal {percent(system.retrieval_balanced_accuracy)}</small>
+                    </td>
+                    <td>
+                      {percent(system.retrieval_sensitivity)} / {percent(system.retrieval_specificity)}
+                      <small>TP {system.retrieval_tp ?? '—'} · TN {system.retrieval_tn ?? '—'} · FP {system.retrieval_fp ?? '—'} · FN {system.retrieval_fn ?? '—'}</small>
+                    </td>
                     <td>{percent(system.evidence_label_precision_at_4)}</td>
+                    <td>
+                      {percent(system.evidence_label_recall_at_4)}
+                      <small>MRR {decimal(system.evidence_label_mrr)} · nDCG {decimal(system.evidence_label_ndcg_at_4)}</small>
+                    </td>
                     <td>{percent(system.answer_label_accuracy)}</td>
+                    <td>
+                      {percent(system.answer_f1)}
+                      <small>Unknown {system.answer_unknown ?? 0}</small>
+                    </td>
+                    <td>{percent(system.answer_balanced_accuracy)}</td>
                     <td>{decimal(system.latency_ms)} ms</td>
                     <td>{percent(system.generator_fallback_rate)}</td>
                     <td>{system.n_cases}</td>
@@ -192,7 +303,7 @@ export function EvaluationScreen() {
         <div className="benchmark-table-wrap panel">
           <div className="benchmark-panel-heading"><div><span className="eyebrow">Case audit</span><h3>Chi tiết từng ảnh và từng system</h3></div><span>{evaluatedCases.length} rows</span></div>
           <table className="benchmark-table case-table">
-            <thead><tr><th>Case</th><th>System</th><th>Expected</th><th>Predicted</th><th>Evidence</th><th>Answer</th><th>Latency</th></tr></thead>
+            <thead><tr><th>Case</th><th>System</th><th>Expected</th><th>Top evidence</th><th>Answer label</th><th>Evidence</th><th>Answer</th><th>Latency</th></tr></thead>
             <tbody>
               {evaluatedCases.map((item, index) => (
                 <tr key={`${item.system_key}-${item.case_id}-${index}`}>
@@ -200,6 +311,7 @@ export function EvaluationScreen() {
                   <td>{item.system_label}</td>
                   <td>{item.expected_diagnosis}</td>
                   <td>{item.predicted_top_diagnosis || 'none'}</td>
+                  <td>{item.answer_predicted_diagnosis || 'unknown'}</td>
                   <td>{percent(item.retrieval_top1_label_accuracy)}</td>
                   <td>{percent(item.answer_label_accuracy)}</td>
                   <td>{item.latency_ms} ms</td>

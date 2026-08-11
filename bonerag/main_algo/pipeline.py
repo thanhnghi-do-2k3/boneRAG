@@ -96,9 +96,16 @@ class BoneRAGPipeline:
                 resolved_image_path = resolve_dataset_image_path(raw_image_path)
                 actual_diagnosis = infer_diagnosis_from_image_path(resolved_image_path or raw_image_path)
                 diagnosis = actual_diagnosis or item.get("diagnosis", "unknown")
+                raw_image_id = str(item.get("image_id", "")).strip()
+                image_stem = Path(raw_image_path or raw_image_id).stem.lower()
+                image_id = (
+                    f"fracatlas-{diagnosis if diagnosis in {'fracture', 'normal'} else 'unknown'}-{image_stem}"
+                    if image_stem
+                    else raw_image_id
+                )
                 loaded_records.append(
                     ImageRecord(
-                        image_id=item.get("image_id", ""),
+                        image_id=image_id,
                         title=item.get("title", ""),
                         body_part=item.get("body_part", "unknown"),
                         diagnosis=diagnosis,

@@ -20,6 +20,7 @@ from __future__ import annotations
 import argparse
 import json
 import mimetypes
+import os
 import sys
 import threading
 import time
@@ -188,6 +189,99 @@ def _preload_default_pipeline() -> None:
         print("[demo-app] ✅ Default pipeline ready!")
     except Exception as exc:
         print(f"[demo-app] ❌ Preload failed: {exc}")
+
+
+def _rule_based_benchmark_analysis(summary: dict) -> str:
+    systems = summary.get("systems") if isinstance(summary, dict) else []
+    if not isinstance(systems, list) or not systems:
+        return "Chưa có đủ dữ liệu benchmark để nhận xét."
+
+    def metric(system: dict, key: str) -> float:
+        try:
+            return float(system.get(key, 0.0))
+        except (TypeError, ValueError):
+            return 0.0
+
+    best_retrieval = max(systems, key=lambda item: metric(item, "retrieval_top1_label_accuracy"))
+    best_answer = max(systems, key=lambda item: metric(item, "answer_label_accuracy"))
+    ours = next((item for item in systems if item.get("system_key") == "bonerag"), None)
+    multimodal = next((item for item in systems if item.get("system_key") == "multimodal_rag"), None)
+
+    lines = [
+        "Nhận xét tự động:",
+        f"- Retrieval tốt nhất hiện là {best_retrieval.get('system_label')} với Top-1 {metric(best_retrieval, 'retrieval_top1_label_accuracy'):.1%}.",
+        f"- Answer label tốt nhất hiện là {best_answer.get('system_label')} với accuracy {metric(best_answer, 'answer_label_accuracy'):.1%}.",
+    ]
+    if ours and multimodal:
+        delta_top1 = metric(ours, "retrieval_top1_label_accuracy") - metric(multimodal, "retrieval_top1_label_accuracy")
+        delta_p4 = metric(ours, "evidence_label_precision_at_4") - metric(multimodal, "evidence_label_precision_at_4")
+        delta_answer = metric(ours, "answer_label_accuracy") - metric(multimodal, "answer_label_accuracy")
+        lines.append(
+            f"- So với Image + Text RAG, BoneRAG chênh Top-1 {delta_top1:+.1%}, P@4 {delta_p4:+.1%}, Answer {delta_answer:+.1%}."
+        )
+        if delta_top1 <= 0 and delta_p4 <= 0:
+            lines.append("- Chưa nên claim BoneRAG là retrieval method tốt hơn; cần cải thiện reranker/evidence selection trước.")
+        elif delta_top1 > 0 or delta_p4 > 0:
+            lines.append("- Có tín hiệu cải thiện retrieval, nhưng vẫn nên báo confidence interval và phân tích per-case.")
+    lines.append("- Các dòng MMed-RAG/RULE/FactMM-RAG trong bảng là proxy paper-inspired, không phải reproduction chính thức của paper.")
+    return "\n".join(lines)
+
+
+def _gemini_benchmark_analysis(summary: dict, cases: list | None = None) -> tuple[str, str]:
+    api_key = os.environ.get("GEMINI_API_KEY") or os.environ.get("GOOGLE_API_KEY")
+    if not api_key:
+        return _rule_based_benchmark_analysis(summary), "rule_based"
+
+    import urllib.request
+    url = (
+        "https://generativelanguage.googleapis.com/v1beta/models/"
+        "gemini-1.5-flash:generateContent?key="
+        + quote(api_key, safe="")
+    )
+    compact_cases = []
+    if isinstance(cases, list):
+        for item in cases[:160]:
+            if isinstance(item, dict):
+                compact_cases.append({
+                    "case_id": item.get("case_id"),
+                    "system_key": item.get("system_key"),
+                    "expected": item.get("expected_diagnosis"),
+                    "top": item.get("predicted_top_diagnosis"),
+                    "answer": item.get("answer_predicted_diagnosis"),
+                    "retrieval_correct": item.get("retrieval_top1_label_accuracy"),
+                    "answer_correct": item.get("answer_label_accuracy"),
+                })
+    prompt = (
+        "Bạn là reviewer nghiên cứu Medical Image RAG. Hãy nhận xét benchmark này bằng tiếng Việt, "
+        "ngắn gọn nhưng sắc bén. Phân biệt rõ baseline nội bộ với proxy paper-inspired; không được claim "
+        "vượt paper nếu chưa reproduction chính thức. Nêu: hệ tốt nhất theo retrieval, hệ tốt nhất theo answer, "
+        "BoneRAG có đủ mạnh chưa, lỗi metric/thiên lệch cần kiểm tra, và 3 bước cải thiện tiếp theo.\n\n"
+        f"SUMMARY JSON:\n{json.dumps(summary, ensure_ascii=False)[:12000]}\n\n"
+        f"CASE AUDIT SAMPLE:\n{json.dumps(compact_cases, ensure_ascii=False)[:12000]}"
+    )
+    payload = {
+        "contents": [{"parts": [{"text": prompt}]}],
+        "generationConfig": {"temperature": 0.2, "maxOutputTokens": 900},
+    }
+    try:
+        req = urllib.request.Request(
+            url,
+            data=json.dumps(payload).encode("utf-8"),
+            headers={"Content-Type": "application/json"},
+            method="POST",
+        )
+        with urllib.request.urlopen(req, timeout=45) as resp:
+            data = json.loads(resp.read().decode("utf-8"))
+        text = (
+            data.get("candidates", [{}])[0]
+            .get("content", {})
+            .get("parts", [{}])[0]
+            .get("text", "")
+            .strip()
+        )
+        return text or _rule_based_benchmark_analysis(summary), "gemini"
+    except Exception as exc:
+        return _rule_based_benchmark_analysis(summary) + f"\n\nGemini fallback: {exc}", "rule_based_fallback"
 
 
 
@@ -564,6 +658,7 @@ class BoneRAGHandler(BaseHTTPRequestHandler):
                 "system_key": system["key"],
                 "system_label": system["label"],
                 "description": system["description"],
+                "paper_reference": system.get("paper_reference"),
                 **aggregate_case_scores(scores),
             })
 
@@ -577,10 +672,12 @@ class BoneRAGHandler(BaseHTTPRequestHandler):
             "cases": all_results,
         }
         run_path = benchmark_runs_path()
+        write_error = None
         try:
             with run_path.open("a", encoding="utf-8") as fh:
                 fh.write(json.dumps(run_record, ensure_ascii=False) + "\n")
         except OSError as exc:
+            write_error = str(exc)
             print(f"[benchmark] log write failed: {exc}")
 
         yield {
@@ -590,8 +687,14 @@ class BoneRAGHandler(BaseHTTPRequestHandler):
                 **protocol,
                 "systems": system_summaries,
                 "total_evaluated": len(all_results),
+                "saved_to": str(run_path) if write_error is None else None,
+                "save_error": write_error,
             },
-            "message": "Hoàn tất benchmark thật và đã ghi benchmark_runs.jsonl.",
+            "message": (
+                f"Hoàn tất benchmark thật và đã ghi {run_path}."
+                if write_error is None
+                else f"Hoàn tất benchmark thật nhưng chưa lưu được file: {write_error}"
+            ),
         }
 
     def _serve_frontend_asset(self, route: str) -> bool:
@@ -791,6 +894,16 @@ class BoneRAGHandler(BaseHTTPRequestHandler):
             pipeline = _get_pipeline()
             result = pipeline.answer(question)
             self._send_json(self._result_to_public_payload(result.to_dict()))
+            return
+
+        if route == "/api/analyze-benchmark":
+            summary = payload.get("summary", payload.get("protocol", {}))
+            cases = payload.get("cases", [])
+            if not isinstance(summary, dict):
+                self._send_json({"error": "summary is required"}, status=400)
+                return
+            analysis, source = _gemini_benchmark_analysis(summary, cases if isinstance(cases, list) else [])
+            self._send_json({"ok": True, "source": source, "analysis": analysis})
             return
 
         self._send_json({"error": "not found"}, status=404)

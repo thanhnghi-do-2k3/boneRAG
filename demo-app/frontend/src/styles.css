@@ -622,6 +622,89 @@ textarea::placeholder {
   margin: 1.5rem 0 0.8rem;
 }
 
+.benchmark-result-actions {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  gap: 10px;
+}
+
+.benchmark-chart,
+.benchmark-analysis {
+  margin-bottom: 1.5rem;
+  padding: 1rem;
+  border-radius: 16px;
+}
+
+.benchmark-chart-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(260px, 1fr));
+  gap: 14px;
+  margin-top: 1rem;
+}
+
+.benchmark-chart-metric {
+  padding: 12px;
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  background: rgba(255, 255, 255, 0.025);
+}
+
+.benchmark-chart-metric > strong {
+  display: block;
+  margin-bottom: 10px;
+  font-size: 0.82rem;
+}
+
+.benchmark-bars {
+  display: grid;
+  gap: 8px;
+}
+
+.benchmark-bar-row {
+  display: grid;
+  grid-template-columns: minmax(92px, 1fr) minmax(90px, 1.3fr) 48px;
+  align-items: center;
+  gap: 8px;
+  font-size: 0.72rem;
+}
+
+.benchmark-bar-row span {
+  min-width: 0;
+  overflow: hidden;
+  color: var(--muted);
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.benchmark-bar-row div {
+  height: 8px;
+  overflow: hidden;
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.08);
+}
+
+.benchmark-bar-row i {
+  display: block;
+  height: 100%;
+  border-radius: inherit;
+  background: var(--accent-strong);
+}
+
+.benchmark-bar-row em {
+  color: var(--ink);
+  font-style: normal;
+  text-align: right;
+}
+
+.benchmark-analysis pre {
+  margin: 1rem 0 0;
+  white-space: pre-wrap;
+  color: #d4d4d8;
+  font: inherit;
+  line-height: 1.65;
+}
+
 .benchmark-table-wrap {
   margin-bottom: 1.5rem;
   overflow: auto;
@@ -631,7 +714,7 @@ textarea::placeholder {
 
 .benchmark-table {
   width: 100%;
-  min-width: 720px;
+  min-width: 1180px;
   border-collapse: collapse;
   color: var(--ink);
   font-size: 0.84rem;
@@ -661,6 +744,10 @@ textarea::placeholder {
   font-size: 0.72rem;
   text-overflow: ellipsis;
   white-space: nowrap;
+}
+
+.benchmark-table td small.paper-proxy {
+  color: var(--accent-strong);
 }
 
 .benchmark-table .highlight-row {

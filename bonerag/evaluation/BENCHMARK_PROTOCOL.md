@@ -27,7 +27,15 @@ case order. Only the retrieval condition changes:
 1. `Text-only RAG`: text query, no image vector.
 2. `Image-only RAG`: image vector weight 1.0.
 3. `Image + Text RAG`: image weight 0.6 and text weight 0.4.
-4. `BoneRAG (ours)`: image/text blend plus anatomical-pathology reranking and
+4. `MMed-RAG-style Adaptive Context`: paper-inspired proxy with image/text
+   retrieval and a larger context window. This is not an official MMed-RAG
+   reproduction.
+5. `FactMM-RAG-style Fact Rerank`: paper-inspired proxy with lighter
+   fact/anatomy-aware evidence reranking. This is not an official FactMM-RAG
+   reproduction.
+6. `RULE-style Gated RAG`: paper-inspired proxy with a stricter evidence gate
+   for reliability. This is not an official RULE reproduction.
+7. `BoneRAG (ours)`: image/text blend plus anatomical-pathology reranking and
    evidence gate.
 
 ## Metrics
@@ -36,8 +44,21 @@ case order. Only the retrieval condition changes:
   label.
 - `evidence_label_precision_at_4`: fraction of top-4 evidence with the true
   folder label.
+- `evidence_label_recall_at_4`: whether at least one top-4 evidence item has
+  the true folder label.
+- `evidence_label_mrr`: reciprocal rank of the first true-label evidence item.
+- `evidence_label_ndcg_at_4`: ranking quality of true-label evidence with
+  position discount.
 - `answer_label_accuracy`: generated answer contains the correct fracture or
   normal label.
+- `retrieval_sensitivity`, `retrieval_specificity`, `retrieval_precision`,
+  `retrieval_f1`, and `retrieval_balanced_accuracy`: binary diagnostic metrics
+  for top-1 retrieved evidence, with fracture treated as the positive class.
+- `answer_sensitivity`, `answer_specificity`, `answer_precision`,
+  `answer_f1`, and `answer_balanced_accuracy`: the same binary diagnostic
+  metrics after normalizing the generated answer to fracture/normal/unknown.
+- `retrieval_tp/tn/fp/fn/unknown` and `answer_tp/tn/fp/fn/unknown`: confusion
+  counts for auditing label-specific failure modes.
 - `latency_ms`: end-to-end per-case latency, including retrieval and generation.
 - `generator_fallback_rate`: fraction of cases where a requested neural
   generator could not load and fell back to the evidence synthesizer; this must

@@ -35,6 +35,40 @@ PATHOLOGY_KEYWORDS: set[str] = {
 }
 
 
+def _pathology_target_from_question(question: str) -> str | None:
+    """Infer an asserted pathology target from the question, if any.
+
+    Yes/no screening prompts such as "Does this X-ray show a fracture?" should
+    not bias the reranker toward fracture records; the image embedding should
+    carry that decision. Asserted prompts such as "severe wrist fracture" still
+    benefit from pathology-aware reranking.
+    """
+    q_lower = question.lower().strip()
+    has_pathology_word = any(kw in q_lower for kw in PATHOLOGY_KEYWORDS)
+    normal_patterns = (
+        r"\bno\s+(?:acute\s+)?fracture\b",
+        r"\bwithout\s+(?:a\s+)?fracture\b",
+        r"\bnormal\b",
+        r"không\s+(?:có\s+)?(?:gãy|fracture|xương gãy)",
+        r"bình thường",
+    )
+    if any(re.search(pattern, q_lower) for pattern in normal_patterns):
+        return "normal"
+
+    screening_patterns = (
+        r"^\s*(does|do|is|are|can|could|would|will|has|have)\b",
+        r"\b(show|shows|detect|detects|indicate|indicates|evidence of)\b",
+        r"\?$",
+        r"\b(có|không|liệu|phải|chăng)\b.*\b(gãy|fracture)\b",
+    )
+    if has_pathology_word and any(re.search(pattern, q_lower) for pattern in screening_patterns):
+        return None
+
+    if has_pathology_word:
+        return "fracture"
+    return None
+
+
 @dataclass
 class RerankScore:
     parent_id: str
@@ -89,12 +123,14 @@ class AnatomicalReranker:
             anatomy_match = 0.0
 
         # 2. Pathology Finding Score
-        q_has_fracture = any(kw in q_lower for kw in PATHOLOGY_KEYWORDS)
+        pathology_target = _pathology_target_from_question(q_lower)
         rec_is_fractured = record.diagnosis.lower() == "fracture" or record.fracture_type.lower() != "none"
-        
-        if q_has_fracture and rec_is_fractured:
+
+        if pathology_target is None:
+            pathology_score = 0.5
+        elif pathology_target == "fracture" and rec_is_fractured:
             pathology_score = 1.0
-        elif not q_has_fracture and not rec_is_fractured:
+        elif pathology_target == "normal" and not rec_is_fractured:
             pathology_score = 1.0
         else:
             pathology_score = 0.2
@@ -102,7 +138,7 @@ class AnatomicalReranker:
         # 3. Hard Negative Mining Penalty
         # Penalty if anatomy matches but pathology is opposite (e.g., normal case when user asks for severe fracture)
         penalty = 0.0
-        if q_has_fracture and not rec_is_fractured and anatomy_match > 0.5:
+        if pathology_target == "fracture" and not rec_is_fractured and anatomy_match > 0.5:
             penalty = self.hard_negative_penalty
 
         final_score = (

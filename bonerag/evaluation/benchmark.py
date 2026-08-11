@@ -8,7 +8,9 @@ whole test hold-out from retrieval, and evaluates every system on the same cases
 from __future__ import annotations
 
 import hashlib
+import math
 import os
+import re
 import time
 from dataclasses import dataclass
 from pathlib import Path
@@ -58,18 +60,55 @@ SYSTEMS: tuple[dict[str, Any], ...] = (
     {
         "key": "image_rag",
         "label": "Image-only RAG",
-        "description": "Chỉ dùng embedding ảnh, không dùng reranking domain.",
+        "description": "Chỉ dùng embedding ảnh, không dùng reranking domain; proxy image-first theo tinh thần VisRAG, không phải reproduction chính thức.",
         "use_image": True,
         "image_alpha": 1.0,
         "rerank": False,
+        "paper_reference": "VisRAG-style image-first retrieval proxy",
     },
     {
         "key": "multimodal_rag",
         "label": "Image + Text RAG",
-        "description": "Blend 60% image + 40% text, không reranking domain.",
+        "description": "Blend 60% image + 40% text, không reranking domain; proxy multimodal RAG theo tinh thần MMed-RAG.",
         "use_image": True,
         "image_alpha": 0.6,
         "rerank": False,
+        "paper_reference": "MMed-RAG-style multimodal context proxy",
+    },
+    {
+        "key": "mmedrag_adaptive_context",
+        "label": "MMed-RAG-style Adaptive Context",
+        "description": "Proxy paper-inspired: image+text với top-k context lớn hơn để kiểm tra adaptive-context, không phải reproduction chính thức.",
+        "use_image": True,
+        "image_alpha": 0.6,
+        "rerank": False,
+        "top_k": 6,
+        "paper_reference": "MMed-RAG adaptive-context proxy",
+    },
+    {
+        "key": "factmm_rerank",
+        "label": "FactMM-RAG-style Fact Rerank",
+        "description": "Proxy paper-inspired: rerank nhẹ theo anatomy/pathology để kiểm tra fact-aware evidence ordering, không phải reproduction chính thức.",
+        "use_image": True,
+        "image_alpha": 0.6,
+        "rerank": True,
+        "reranker_weights": {
+            "weight_sim": 0.65,
+            "weight_anatomy": 0.25,
+            "weight_pathology": 0.10,
+            "hard_negative_penalty": 0.15,
+        },
+        "paper_reference": "FactMM-RAG fact-aware reranking proxy",
+    },
+    {
+        "key": "rule_gated_rag",
+        "label": "RULE-style Gated RAG",
+        "description": "Proxy paper-inspired: image+text với evidence gate nghiêm hơn để kiểm tra reliability/safety, không phải reproduction chính thức.",
+        "use_image": True,
+        "image_alpha": 0.6,
+        "rerank": False,
+        "min_similarity": 0.08,
+        "paper_reference": "RULE reliability-gated proxy",
     },
     {
         "key": "bonerag",
@@ -130,11 +169,35 @@ def dataset_fingerprint(cases: list[BenchmarkCase]) -> str:
     return hashlib.sha256(payload.encode("utf-8")).hexdigest()[:16]
 
 
-def _label_in_text(answer: str, expected: str) -> bool:
+def _diagnosis_from_text(answer: str) -> str | None:
+    """Map a generated answer to the benchmark's binary label space."""
     normalized = answer.lower()
-    if expected == "fracture":
-        return any(term in normalized for term in ("fracture", "fractured", "gãy xương", "gãy"))
-    return any(term in normalized for term in ("normal", "no fracture", "không gãy", "bình thường"))
+    normal_patterns = (
+        r"\bnormal\b",
+        r"\bno\s+(?:acute\s+)?fracture\b",
+        r"\bwithout\s+(?:a\s+)?fracture\b",
+        r"không\s+(?:có\s+)?(?:bằng chứng\s+)?(?:gãy|fracture|骨折)",
+        r"không\s+(?:thấy|phát hiện).*?(?:gãy|fracture|骨折)",
+        r"bình thường",
+    )
+    if any(re.search(pattern, normalized) for pattern in normal_patterns):
+        return "normal"
+
+    fracture_patterns = (
+        r"\bfracture\b",
+        r"\bfractured\b",
+        r"\bbroken\b",
+        r"gãy xương",
+        r"\bgãy\b",
+        r"骨折",
+    )
+    if any(re.search(pattern, normalized) for pattern in fracture_patterns):
+        return "fracture"
+    return None
+
+
+def _label_in_text(answer: str, expected: str) -> bool:
+    return _diagnosis_from_text(answer) == expected
 
 
 def _run_one_case(
@@ -149,11 +212,25 @@ def _run_one_case(
         pipeline.reranker.weight_pathology,
         pipeline.reranker.hard_negative_penalty,
     )
+    original_top_k = pipeline.top_k
+    original_min_similarity = pipeline.min_similarity
+    original_gate_min_similarity = pipeline.gate.min_similarity
     try:
+        if "top_k" in system:
+            pipeline.top_k = int(system["top_k"])
+        if "min_similarity" in system:
+            pipeline.min_similarity = float(system["min_similarity"])
+            pipeline.gate.min_similarity = float(system["min_similarity"])
         if not system["rerank"]:
             pipeline.reranker.weight_anatomy = 0.0
             pipeline.reranker.weight_pathology = 0.0
             pipeline.reranker.hard_negative_penalty = 0.0
+        elif system.get("reranker_weights"):
+            weights = system["reranker_weights"]
+            pipeline.reranker.weight_sim = float(weights.get("weight_sim", pipeline.reranker.weight_sim))
+            pipeline.reranker.weight_anatomy = float(weights.get("weight_anatomy", pipeline.reranker.weight_anatomy))
+            pipeline.reranker.weight_pathology = float(weights.get("weight_pathology", pipeline.reranker.weight_pathology))
+            pipeline.reranker.hard_negative_penalty = float(weights.get("hard_negative_penalty", pipeline.reranker.hard_negative_penalty))
         start = time.perf_counter()
         question = case.question
         if not system["use_image"]:
@@ -189,6 +266,9 @@ def _run_one_case(
             pipeline.reranker.weight_pathology,
             pipeline.reranker.hard_negative_penalty,
         ) = original_weights
+        pipeline.top_k = original_top_k
+        pipeline.min_similarity = original_min_similarity
+        pipeline.gate.min_similarity = original_gate_min_similarity
 
 
 def _evidence_from_dict(item: dict[str, Any]):
@@ -204,16 +284,30 @@ def score_case(case: BenchmarkCase, result: PipelineResult, latency_ms: float) -
     top = evidence[0] if evidence else None
     expected = case.expected_diagnosis
     evidence_labels = [item.diagnosis for item in evidence]
+    first_correct_rank = next(
+        (index for index, label in enumerate(evidence_labels, start=1) if label == expected),
+        None,
+    )
+    dcg = sum(
+        (1.0 if label == expected else 0.0) / (1 if rank == 1 else math.log2(rank + 1))
+        for rank, label in enumerate(evidence_labels, start=1)
+    )
+    ideal_correct = min(len([label for label in evidence_labels if label == expected]), 4)
+    idcg = sum(1.0 / (1 if rank == 1 else math.log2(rank + 1)) for rank in range(1, ideal_correct + 1))
     return {
         "case_id": case.case_id,
         "query_image_id": case.query_image_id,
         "expected_diagnosis": expected,
         "predicted_top_diagnosis": top.diagnosis if top else None,
+        "answer_predicted_diagnosis": _diagnosis_from_text(result.answer),
         "retrieval_top1_label_accuracy": float(bool(top and top.diagnosis == expected)),
         "evidence_label_precision_at_4": (
             sum(label == expected for label in evidence_labels) / len(evidence_labels)
             if evidence_labels else 0.0
         ),
+        "evidence_label_recall_at_4": float(any(label == expected for label in evidence_labels)),
+        "evidence_label_mrr": round(1.0 / first_correct_rank, 4) if first_correct_rank else 0.0,
+        "evidence_label_ndcg_at_4": round(dcg / idcg, 4) if idcg else 0.0,
         "answer_label_accuracy": float(_label_in_text(result.answer, expected)),
         "used_retrieval": result.used_retrieval,
         "top_evidence_id": top.image_id if top else None,
@@ -236,6 +330,7 @@ def run_system_case(
         **score_case(case, result, latency_ms),
         "system_key": system["key"],
         "system_label": system["label"],
+        "paper_reference": system.get("paper_reference"),
         "encoder": pipeline.encoder.__class__.__name__,
         "generator": pipeline.generator.name,
         "generator_fallback": bool(getattr(pipeline.generator, "fallback_used", False)),
@@ -246,6 +341,9 @@ def aggregate_case_scores(case_scores: list[dict[str, Any]]) -> dict[str, Any]:
     keys = (
         "retrieval_top1_label_accuracy",
         "evidence_label_precision_at_4",
+        "evidence_label_recall_at_4",
+        "evidence_label_mrr",
+        "evidence_label_ndcg_at_4",
         "answer_label_accuracy",
         "latency_ms",
     )
@@ -257,7 +355,60 @@ def aggregate_case_scores(case_scores: list[dict[str, Any]]) -> dict[str, Any]:
     summary["generator_fallback_rate"] = (
         round(sum(fallback_values) / len(fallback_values), 4) if fallback_values else 0.0
     )
+    summary.update(_classification_metrics(case_scores, "predicted_top_diagnosis", "retrieval"))
+    summary.update(_classification_metrics(case_scores, "answer_predicted_diagnosis", "answer"))
     return summary
+
+
+def _classification_metrics(
+    case_scores: list[dict[str, Any]],
+    prediction_key: str,
+    prefix: str,
+) -> dict[str, Any]:
+    """Compute fracture-positive binary classification metrics."""
+    tp = tn = fp = fn = unknown = 0
+    positives = negatives = 0
+    for item in case_scores:
+        expected = item.get("expected_diagnosis")
+        predicted = item.get(prediction_key)
+        if expected == "fracture":
+            positives += 1
+            if predicted == "fracture":
+                tp += 1
+            elif predicted == "normal":
+                fn += 1
+            else:
+                unknown += 1
+                fn += 1
+        elif expected == "normal":
+            negatives += 1
+            if predicted == "normal":
+                tn += 1
+            elif predicted == "fracture":
+                fp += 1
+            else:
+                unknown += 1
+                fp += 1
+
+    sensitivity = tp / positives if positives else 0.0
+    specificity = tn / negatives if negatives else 0.0
+    precision = tp / (tp + fp) if (tp + fp) else 0.0
+    recall = sensitivity
+    f1 = (2 * precision * recall / (precision + recall)) if (precision + recall) else 0.0
+    balanced_accuracy = (sensitivity + specificity) / 2 if case_scores else 0.0
+
+    return {
+        f"{prefix}_tp": tp,
+        f"{prefix}_tn": tn,
+        f"{prefix}_fp": fp,
+        f"{prefix}_fn": fn,
+        f"{prefix}_unknown": unknown,
+        f"{prefix}_sensitivity": round(sensitivity, 4),
+        f"{prefix}_specificity": round(specificity, 4),
+        f"{prefix}_precision": round(precision, 4),
+        f"{prefix}_f1": round(f1, 4),
+        f"{prefix}_balanced_accuracy": round(balanced_accuracy, 4),
+    }
 
 
 def protocol_metadata(cases: list[BenchmarkCase]) -> dict[str, Any]:

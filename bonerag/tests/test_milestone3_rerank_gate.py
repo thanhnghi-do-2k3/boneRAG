@@ -50,6 +50,30 @@ class TestMilestone3RerankGate(unittest.TestCase):
         self.assertEqual(score_frac.pathology_score, 1.0)
         self.assertGreater(score_frac.final_score, 0.5)
 
+    def test_screening_question_does_not_bias_pathology(self) -> None:
+        question = "Does this X-ray show a bone fracture?"
+        score_frac = self.reranker.compute_rerank_score(
+            question=question,
+            record=self.test_record_fracture,
+            vector_similarity=0.70,
+        )
+        score_norm = self.reranker.compute_rerank_score(
+            question=question,
+            record=self.test_record_normal,
+            vector_similarity=0.70,
+        )
+        self.assertEqual(score_frac.pathology_score, 0.5)
+        self.assertEqual(score_norm.pathology_score, 0.5)
+        self.assertEqual(score_norm.hard_negative_penalty, 0.0)
+
+    def test_normal_query_matches_normal_pathology(self) -> None:
+        score_norm = self.reranker.compute_rerank_score(
+            question="Normal wrist X-ray without fracture",
+            record=self.test_record_normal,
+            vector_similarity=0.70,
+        )
+        self.assertEqual(score_norm.pathology_score, 1.0)
+
     def test_hard_negative_penalty(self) -> None:
         score_norm = self.reranker.compute_rerank_score(
             question="Severe wrist fracture distal radius",

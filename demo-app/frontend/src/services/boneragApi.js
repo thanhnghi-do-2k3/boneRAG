@@ -189,6 +189,14 @@ export function fetchBenchmarkRuns() {
     .then((runs) => (Array.isArray(runs) ? runs : []));
 }
 
+export function analyzeBenchmarkRun(payload) {
+  return apiFetch('/api/analyze-benchmark', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', ...DEFAULT_HEADERS },
+    body: JSON.stringify(payload),
+  }).then((response) => response.json());
+}
+
 export function fetchModelConfigs() {
   return apiFetch('/api/model-configs').then((r) => r.json());
 }

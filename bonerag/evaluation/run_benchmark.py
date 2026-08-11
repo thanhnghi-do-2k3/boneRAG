@@ -116,6 +116,7 @@ def _run_generator_matrix(
             "system_key": system["key"],
             "system_label": system["label"],
             "description": system["description"],
+            "paper_reference": system.get("paper_reference"),
             **aggregate_case_scores(case_scores),
         }
         system_results.append(summary)
@@ -168,14 +169,24 @@ def run_benchmark_matrix(
 
 
 def print_markdown_report(results: list[dict[str, Any]]) -> None:
-    print("\n| System | Generator | Top-1 label | Evidence P@4 | Answer label | Latency | Cases |")
-    print("|---|---|---:|---:|---:|---:|---:|")
+    print(
+        "\n| System | Generator | Top-1 label | Retrieval F1 | Retrieval BalAcc | "
+        "Evidence P@4 | Recall@4 | MRR | nDCG@4 | Answer label | Answer F1 | Answer BalAcc | Latency | Cases |"
+    )
+    print("|---|---|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|")
     for result in results:
         print(
             f"| {result['system_label']} | {result['generator']} | "
             f"{result['retrieval_top1_label_accuracy']:.3f} | "
+            f"{result['retrieval_f1']:.3f} | "
+            f"{result['retrieval_balanced_accuracy']:.3f} | "
             f"{result['evidence_label_precision_at_4']:.3f} | "
+            f"{result['evidence_label_recall_at_4']:.3f} | "
+            f"{result['evidence_label_mrr']:.3f} | "
+            f"{result['evidence_label_ndcg_at_4']:.3f} | "
             f"{result['answer_label_accuracy']:.3f} | "
+            f"{result['answer_f1']:.3f} | "
+            f"{result['answer_balanced_accuracy']:.3f} | "
             f"{result['latency_ms']:.1f} ms | {result['n_cases']} |"
         )
 
