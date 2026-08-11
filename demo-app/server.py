@@ -156,8 +156,9 @@ def _get_pipeline(config: dict | None = None) -> BoneRAGPipeline:
                 # Locate pre-computed FAISS index & metadata for full FracAtlas dataset (4,082 X-rays)
                 repo_root = Path(__file__).resolve().parents[1]
                 idx_name = "biomedclip" if "biomed" in encoder_name else ("clip_vitl14" if "l14" in encoder_name else "clip_vitb32")
-                faiss_file = repo_root / f"fracatlas_{idx_name}.faiss"
-                meta_file = repo_root / f"fracatlas_{idx_name}_metadata.json"
+                artifact_dir = repo_root / "bonerag" / "artifacts" / "fracatlas"
+                faiss_file = artifact_dir / f"fracatlas_{idx_name}.faiss"
+                meta_file = artifact_dir / f"fracatlas_{idx_name}_metadata.json"
 
                 index_path = faiss_file if faiss_file.exists() else None
                 metadata_path = meta_file if meta_file.exists() else None

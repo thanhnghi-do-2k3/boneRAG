@@ -18,6 +18,7 @@ BoneRAG/
 │   └── CODEBASE_MAP.md         # Bản đồ mã nguồn chi tiết & danh sách hàm
 ├── bonerag/                    # [Core Algorithm Package]
 │   ├── main_algo/              # Thuật toán cốt lõi (data, encoder, index, pipeline)
+│   ├── artifacts/fracatlas/    # FAISS index & metadata offline của FracAtlas
 │   ├── tests/                  # Unit tests cho bộ thuật toán
 │   ├── evaluation/             # Lưu kết quả thử nghiệm & metrics
 │   ├── algorithm-logs/         # Log lịch sử nâng cấp thuật toán (Milestone 2 log)

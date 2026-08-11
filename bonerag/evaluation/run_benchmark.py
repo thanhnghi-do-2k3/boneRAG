@@ -50,8 +50,9 @@ def _index_paths(encoder_name: str) -> tuple[Path, Path]:
         if "l14" in encoder_name
         else "clip_vitb32"
     )
-    index_path = repo_root / f"fracatlas_{index_name}.faiss"
-    metadata_path = repo_root / f"fracatlas_{index_name}_metadata.json"
+    artifact_dir = repo_root / "bonerag" / "artifacts" / "fracatlas"
+    index_path = artifact_dir / f"fracatlas_{index_name}.faiss"
+    metadata_path = artifact_dir / f"fracatlas_{index_name}_metadata.json"
     missing = [str(path) for path in (index_path, metadata_path) if not path.exists()]
     if missing:
         raise FileNotFoundError(

@@ -54,7 +54,8 @@ these files survive a server restart or a new Colab runtime:
 - `sessions.jsonl`: chat/session logs and feedback
 - `benchmark_runs.jsonl`: completed benchmark runs
 - `bonerag_server.log`: backend startup/runtime log
-- `indexes/`: regenerated FAISS and metadata artifacts
+- `indexes/`: regenerated FAISS and metadata artifacts, copied into
+  `bonerag/artifacts/fracatlas/` for the running server
 - `model_cache/`: Hugging Face and Torch model cache
 
 ## Reproduction
