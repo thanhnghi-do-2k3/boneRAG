@@ -17,11 +17,11 @@ if TYPE_CHECKING:
 
 
 ANATOMY_KEYWORDS: dict[str, set[str]] = {
-    "wrist": {"wrist", "radius", "ulna", "carpal", "distal radius", "scaphoid"},
-    "hand": {"hand", "metacarpal", "phalanges", "thumb", "finger"},
-    "hip": {"hip", "femur", "femoral neck", "pelvis", "acetabulum"},
-    "forearm": {"forearm", "radius", "ulna", "shaft"},
-    "leg": {"leg", "tibia", "fibula", "knee", "patella"},
+    "wrist": {"wrist", "radius", "ulna", "carpal", "distal radius", "scaphoid", "cổ tay", "xương quay", "xương trụ"},
+    "hand": {"hand", "metacarpal", "phalanges", "thumb", "finger", "bàn tay", "ngón tay"},
+    "hip": {"hip", "femur", "femoral neck", "pelvis", "acetabulum", "hông", "xương đùi", "khung chậu"},
+    "forearm": {"forearm", "radius", "ulna", "shaft", "cẳng tay"},
+    "leg": {"leg", "tibia", "fibula", "knee", "patella", "ankle", "foot", "chân", "cẳng chân", "đầu gối", "cổ chân", "bàn chân", "xương chày", "xương mác"},
 }
 
 PATHOLOGY_KEYWORDS: set[str] = {
@@ -32,6 +32,10 @@ PATHOLOGY_KEYWORDS: set[str] = {
     "lesion",
     "tumor",
     "dislocation",
+    "gãy",
+    "nứt",
+    "tổn thương",
+    "trật khớp",
 }
 
 

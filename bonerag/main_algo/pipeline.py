@@ -103,16 +103,28 @@ class BoneRAGPipeline:
                     if image_stem
                     else raw_image_id
                 )
+                body_part = item.get("body_part", "unknown")
+                region = item.get("region", "unknown")
+                text = item.get("text", "")
+                if body_part == "forearm/wrist" and region == "forearm and wrist":
+                    combined_meta = f"{item.get('title', '')} {raw_image_path or ''}".lower()
+                    if "forearm" not in combined_meta and "wrist" not in combined_meta:
+                        body_part = "unlabeled anatomy"
+                        region = "unlabeled anatomy"
+                        text = " ".join(
+                            token for token in str(text).split()
+                            if token.lower() not in {"wrist", "forearm"}
+                        )
                 loaded_records.append(
                     ImageRecord(
                         image_id=image_id,
                         title=item.get("title", ""),
-                        body_part=item.get("body_part", "unknown"),
+                        body_part=body_part,
                         diagnosis=diagnosis,
                         fracture_type="fractured" if diagnosis == "fracture" else "none" if diagnosis == "normal" else item.get("fracture_type", "unknown"),
-                        region=item.get("region", "unknown"),
+                        region=region,
                         evidence_note=item.get("evidence_note", ""),
-                        text=item.get("text", ""),
+                        text=text,
                         image_path=str(resolved_image_path) if resolved_image_path else raw_image_path,
                     )
                 )

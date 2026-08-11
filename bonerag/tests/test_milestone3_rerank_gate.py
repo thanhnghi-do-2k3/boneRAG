@@ -41,6 +41,10 @@ class TestMilestone3RerankGate(unittest.TestCase):
         tokens = self.reranker.extract_anatomy_tokens("Wrist fracture distal radius X-ray")
         self.assertIn("wrist", tokens)
 
+    def test_vietnamese_anatomy_token_extraction(self) -> None:
+        tokens = self.reranker.extract_anatomy_tokens("Chân này có tổn thương ở cổ chân không?")
+        self.assertIn("leg", tokens)
+
     def test_pathology_score_matching(self) -> None:
         score_frac = self.reranker.compute_rerank_score(
             question="Wrist fracture X-ray",

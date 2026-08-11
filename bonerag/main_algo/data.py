@@ -206,16 +206,16 @@ def _build_dataset_sample_records() -> list[ImageRecord]:
                 ImageRecord(
                     image_id=f"fracatlas-fractured-{image_path.stem.lower()}",
                     title=f"FracAtlas fractured X-ray {image_path.stem}",
-                    body_part="forearm/wrist",
+                    body_part="unlabeled anatomy",
                     diagnosis="fracture",
                     fracture_type="fractured",
-                    region="forearm and wrist",
+                    region="unlabeled anatomy",
                     evidence_note=(
                         f"Real FracAtlas fractured case."
                         + (f" Annotated fracture regions: {len(fracture_boxes)}." if fracture_boxes else "")
                     ),
                     text=(
-                        f"fracatlas fractured xray wrist forearm bone fracture case {image_path.stem.lower()}"
+                        f"fracatlas fractured xray bone fracture case {image_path.stem.lower()}"
                     ),
                     image_path=str(image_path),
                     image_width=ann.get("width") if isinstance(ann, dict) else None,
@@ -230,12 +230,12 @@ def _build_dataset_sample_records() -> list[ImageRecord]:
                 ImageRecord(
                     image_id=f"fracatlas-normal-{image_path.stem.lower()}",
                     title=f"FracAtlas non-fractured X-ray {image_path.stem}",
-                    body_part="forearm/wrist",
+                    body_part="unlabeled anatomy",
                     diagnosis="normal",
                     fracture_type="none",
-                    region="forearm and wrist",
+                    region="unlabeled anatomy",
                     evidence_note="Real FracAtlas non-fractured reference case.",
-                    text=f"fracatlas normal xray wrist forearm bone no fracture case {image_path.stem.lower()}",
+                    text=f"fracatlas normal xray bone no fracture case {image_path.stem.lower()}",
                     image_path=str(image_path),
                 )
             )

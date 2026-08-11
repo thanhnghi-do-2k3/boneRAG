@@ -86,6 +86,9 @@ class TestMilestone5ComparativeEval(unittest.TestCase):
                         "diagnosis": "fracture",
                         "fracture_type": "fractured",
                         "title": "mislabeled metadata",
+                        "body_part": "forearm/wrist",
+                        "region": "forearm and wrist",
+                        "text": "fracatlas normal xray wrist forearm bone case img0000477",
                     }
                 ]),
                 encoding="utf-8",
@@ -96,6 +99,8 @@ class TestMilestone5ComparativeEval(unittest.TestCase):
         self.assertEqual(pipeline.records[0].diagnosis, "normal")
         self.assertEqual(pipeline.records[0].fracture_type, "none")
         self.assertEqual(pipeline.records[0].image_id, "fracatlas-normal-img0000477")
+        self.assertEqual(pipeline.records[0].body_part, "unlabeled anatomy")
+        self.assertEqual(pipeline.records[0].region, "unlabeled anatomy")
 
 
 if __name__ == "__main__":

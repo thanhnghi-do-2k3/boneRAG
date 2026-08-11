@@ -111,12 +111,12 @@ for idx, m_cfg in enumerate(FOUNDATION_MODELS, 1):
                 metadata.append({
                     "image_id": f"fracatlas-{'fractured' if is_frac else 'normal'}-{p.stem.lower()}",
                     "title": f"FracAtlas X-ray {p.name}",
-                    "body_part": "forearm/wrist",
+                    "body_part": "unlabeled anatomy",
                     "diagnosis": "fracture" if is_frac else "normal",
                     "fracture_type": "fractured" if is_frac else "none",
-                    "region": "forearm and wrist",
+                    "region": "unlabeled anatomy",
                     "evidence_note": f"FracAtlas real X-ray dataset case {p.name}.",
-                    "text": f"fracatlas {'fractured' if is_frac else 'normal'} xray wrist forearm bone case {p.stem.lower()}",
+                    "text": f"fracatlas {'fractured' if is_frac else 'normal'} xray bone case {p.stem.lower()}",
                     "image_path": str(p)
                 })
 
