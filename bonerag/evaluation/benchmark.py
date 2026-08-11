@@ -113,10 +113,12 @@ SYSTEMS: tuple[dict[str, Any], ...] = (
     {
         "key": "bonerag",
         "label": "BoneRAG (ours)",
-        "description": "Image + text, anatomical/pathology reranking và gate.",
+        "description": "Image + text, anatomical/pathology reranking, evidence consensus và calibrated answer.",
         "use_image": True,
         "image_alpha": 0.6,
         "rerank": True,
+        "label_consensus": True,
+        "answer_calibration": True,
     },
 )
 
@@ -172,6 +174,10 @@ def dataset_fingerprint(cases: list[BenchmarkCase]) -> str:
 def _diagnosis_from_text(answer: str) -> str | None:
     """Map a generated answer to the benchmark's binary label space."""
     normalized = answer.lower()
+    calibrated = re.search(r"kết luận chuẩn hóa bonerag:\s*(fracture|normal)\b", normalized)
+    if calibrated:
+        return calibrated.group(1)
+
     normal_patterns = (
         r"\bnormal\b",
         r"\bno\s+(?:acute\s+)?fracture\b",
@@ -215,7 +221,11 @@ def _run_one_case(
     original_top_k = pipeline.top_k
     original_min_similarity = pipeline.min_similarity
     original_gate_min_similarity = pipeline.gate.min_similarity
+    original_label_consensus = pipeline.enable_label_consensus_rerank
+    original_answer_calibration = pipeline.enable_answer_calibration
     try:
+        pipeline.enable_label_consensus_rerank = bool(system.get("label_consensus", False))
+        pipeline.enable_answer_calibration = bool(system.get("answer_calibration", False))
         if "top_k" in system:
             pipeline.top_k = int(system["top_k"])
         if "min_similarity" in system:
@@ -269,6 +279,8 @@ def _run_one_case(
         pipeline.top_k = original_top_k
         pipeline.min_similarity = original_min_similarity
         pipeline.gate.min_similarity = original_gate_min_similarity
+        pipeline.enable_label_consensus_rerank = original_label_consensus
+        pipeline.enable_answer_calibration = original_answer_calibration
 
 
 def _evidence_from_dict(item: dict[str, Any]):

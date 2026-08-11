@@ -35,7 +35,8 @@ case order. Only the retrieval condition changes:
    reproduction.
 6. `RULE-style Gated RAG`: paper-inspired proxy with a stricter evidence gate
    for reliability. This is not an official RULE reproduction.
-7. `BoneRAG (ours)`: image/text blend plus anatomical-pathology reranking and
+7. `BoneRAG (ours)`: image/text blend plus anatomical-pathology reranking,
+   conservative top-k evidence-label consensus, calibrated answer footer, and
    evidence gate.
 
 ## Metrics

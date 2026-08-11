@@ -7,9 +7,15 @@ from pathlib import Path
 from tempfile import TemporaryDirectory
 import unittest
 
-from bonerag.evaluation.benchmark import SYSTEMS, aggregate_case_scores, build_cases, protocol_metadata
+from bonerag.evaluation.benchmark import (
+    SYSTEMS,
+    _diagnosis_from_text,
+    aggregate_case_scores,
+    build_cases,
+    protocol_metadata,
+)
 from bonerag.main_algo.data import SAMPLE_RECORDS
-from bonerag.main_algo.pipeline import BoneRAGPipeline
+from bonerag.main_algo.pipeline import BoneRAGPipeline, Evidence
 
 
 class TestMilestone5ComparativeEval(unittest.TestCase):
@@ -101,6 +107,47 @@ class TestMilestone5ComparativeEval(unittest.TestCase):
         self.assertEqual(pipeline.records[0].image_id, "fracatlas-normal-img0000477")
         self.assertEqual(pipeline.records[0].body_part, "unlabeled anatomy")
         self.assertEqual(pipeline.records[0].region, "unlabeled anatomy")
+
+    def test_bonerag_consensus_can_promote_top_k_majority_label(self) -> None:
+        class FakeEncoder:
+            dim = 2
+
+            def encode_text(self, text: str):
+                return (1.0, 0.0)
+
+        def ev(image_id: str, diagnosis: str, score: float) -> Evidence:
+            return Evidence(
+                image_id=image_id,
+                image_path=None,
+                image_width=None,
+                image_height=None,
+                fracture_boxes=None,
+                title=image_id,
+                body_part="unlabeled anatomy",
+                diagnosis=diagnosis,
+                fracture_type="fractured" if diagnosis == "fracture" else "none",
+                region="unlabeled anatomy",
+                evidence_note="test",
+                retrieval_score=score,
+                rerank_score=score,
+            )
+
+        pipeline = BoneRAGPipeline(encoder=FakeEncoder())
+        evidence = [
+            ev("normal-top", "normal", 0.90),
+            ev("fracture-1", "fracture", 0.86),
+            ev("fracture-2", "fracture", 0.85),
+            ev("fracture-3", "fracture", 0.84),
+        ]
+        reranked = pipeline._apply_label_consensus_rerank(evidence)
+        self.assertEqual(reranked[0].diagnosis, "fracture")
+
+    def test_answer_parser_prefers_bonerag_calibrated_footer(self) -> None:
+        answer = (
+            "Phần thân câu có thể nhắc no fracture và fracture lẫn nhau.\n\n"
+            "Kết luận chuẩn hóa BoneRAG: fracture (gãy xương)."
+        )
+        self.assertEqual(_diagnosis_from_text(answer), "fracture")
 
 
 if __name__ == "__main__":

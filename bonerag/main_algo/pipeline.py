@@ -12,6 +12,7 @@ Milestone 3 Architecture:
 from __future__ import annotations
 
 from dataclasses import asdict, dataclass
+from collections import Counter
 from pathlib import Path
 from typing import Iterator
 
@@ -138,6 +139,8 @@ class BoneRAGPipeline:
         self.gate = EvidenceGate(min_similarity=self.min_similarity)
         self.citation_formatter = EvidenceCitationSynthesizer()
         self.factuality_auditor = FactualityAuditor()
+        self.enable_label_consensus_rerank = True
+        self.enable_answer_calibration = True
         self.index = self._build_index()
 
     def _build_index(self) -> InMemoryVectorIndex | FAISSVectorIndex:
@@ -255,13 +258,57 @@ class BoneRAGPipeline:
 
     def rerank(self, question: str, hits: list[SearchHit]) -> list[Evidence]:
         """Anatomical & Pathology Cross-Attribute Reranking with Hard Negative Mining."""
-        return self.reranker.rerank_records(question, hits, self.record_by_id, top_k=self.top_k)
+        evidence = self.reranker.rerank_records(question, hits, self.record_by_id, top_k=self.top_k)
+        return self._apply_label_consensus_rerank(evidence) if self.enable_label_consensus_rerank else evidence
+
+    def _evidence_label_consensus(self, evidence: list[Evidence]) -> tuple[str | None, float, dict[str, int]]:
+        """Return a conservative diagnosis consensus from retrieved evidence."""
+        labels = [item.diagnosis for item in evidence if item.diagnosis in {"fracture", "normal"}]
+        if not labels:
+            return None, 0.0, {}
+        counts = Counter(labels)
+        label, count = counts.most_common(1)[0]
+        confidence = count / len(labels)
+        return label, confidence, dict(counts)
+
+    def _apply_label_consensus_rerank(self, evidence: list[Evidence]) -> list[Evidence]:
+        """Promote a strong top-k label consensus without overriding ambiguous evidence."""
+        if len(evidence) < 3:
+            return evidence
+        consensus_label, confidence, _ = self._evidence_label_consensus(evidence[:4])
+        if not consensus_label or confidence < 0.75:
+            return evidence
+        if evidence[0].diagnosis == consensus_label:
+            return evidence
+
+        adjusted: list[tuple[float, int, Evidence]] = []
+        for index, item in enumerate(evidence):
+            bonus = 0.08 if item.diagnosis == consensus_label else -0.03
+            adjusted.append((item.rerank_score + bonus, -index, item))
+        adjusted.sort(key=lambda row: (row[0], row[1]), reverse=True)
+        return [item for _, _, item in adjusted]
+
+    def _calibration_footer(self, evidence: list[Evidence]) -> str:
+        label, confidence, counts = self._evidence_label_consensus(evidence[:4])
+        if not label:
+            return ""
+        total = sum(counts.values())
+        label_vi = "gãy xương" if label == "fracture" else "không thấy gãy xương rõ"
+        count_text = ", ".join(f"{name}={value}" for name, value in sorted(counts.items()))
+        return (
+            "\n\nKết luận chuẩn hóa BoneRAG: "
+            f"{label} ({label_vi}). "
+            f"Độ đồng thuận evidence: {confidence:.0%} trên {total} bằng chứng top-k "
+            f"({count_text})."
+        )
 
     def generate_answer(self, question: str, evidence: list[Evidence], used_retrieval: bool) -> str:
         """Call answer generator layer and attach structured evidence citations."""
         raw_answer = self.generator.generate(question, evidence, used_retrieval=used_retrieval)
         if not used_retrieval or not evidence:
             return raw_answer
+        if self.enable_answer_calibration:
+            raw_answer += self._calibration_footer(evidence)
         return self.citation_formatter.attach_inline_citations(raw_answer, evidence)
 
     def answer(self, question: str) -> PipelineResult:
@@ -410,6 +457,11 @@ class BoneRAGPipeline:
                 token_list.append(token)
                 yield {"type": "token", "text": token}
             full_answer = "".join(token_list)
+            if self.enable_answer_calibration:
+                footer = self._calibration_footer(evidence)
+                if footer:
+                    full_answer += footer
+                    yield {"type": "token", "text": footer}
         else:
             full_answer = self.generate_answer(question, evidence, used_retrieval=True)
             chunk_size = 18
