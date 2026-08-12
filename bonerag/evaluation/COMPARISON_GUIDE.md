@@ -21,8 +21,10 @@ sánh trở nên công bằng nếu input và ground truth khác nhau.
 
 ## Thang thực nghiệm đề xuất
 
-1. **Retrieval-only:** Text-only, Image-only, Image+Text và BoneRAG trên cùng
-   FracAtlas test hold-out. Dùng `Top-1 label`, `Evidence P@4` và latency.
+1. **Retrieval-only:** Image-only, Image+Metadata và BoneRAG trên cùng
+   FracAtlas test hold-out. Không dùng Text-only RAG nếu không có external
+   clinical text/document corpus thật. Dùng `Top-1 label`, `Evidence P@4`
+   và latency.
 2. **Generator-controlled:** giữ nguyên encoder, index, evidence và prompt;
    thay Local Evidence Synthesizer bằng Qwen2.5-0.5B, Qwen2.5-1.5B hoặc
    SmolLM2. Báo thêm `generator_fallback_rate`, bắt buộc bằng 0 trước khi
@@ -38,8 +40,8 @@ sánh trở nên công bằng nếu input và ground truth khác nhau.
 
 Claim có thể bảo vệ được với protocol hiện tại:
 
-> Trên `bonerag-fracatlas-image-v1`, với cùng encoder, FAISS index, generator
-> và 32 ảnh test hold-out, BoneRAG đạt ... so với Image+Text RAG không
+> Trên `bonerag-fracatlas-image-v2`, với cùng encoder, FAISS index, generator
+> và 32 ảnh test hold-out, BoneRAG đạt ... so với Image+Metadata RAG không
 > reranking.
 
 Claim chưa được phép viết:

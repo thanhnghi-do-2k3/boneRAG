@@ -31,13 +31,13 @@ class TestMilestone5ComparativeEval(unittest.TestCase):
 
     def test_protocol_declares_holdout_and_systems(self) -> None:
         protocol = protocol_metadata(build_cases(SAMPLE_RECORDS, cases_per_label=2))
-        self.assertEqual(protocol["benchmark_version"], "bonerag-fracatlas-image-v1")
+        self.assertEqual(protocol["benchmark_version"], "bonerag-fracatlas-image-v2")
         self.assertTrue(protocol["test_holdout"])
         self.assertTrue(protocol["test_ids_excluded_from_retrieval"])
         self.assertEqual(len(SYSTEMS), 3)
-        self.assertEqual(len(benchmark_systems(include_controls=True)), 5)
+        self.assertEqual(len(benchmark_systems(include_controls=True)), 4)
         self.assertEqual(len(benchmark_systems(include_literature_proxies=True)), 6)
-        self.assertEqual(len(benchmark_systems(include_controls=True, include_literature_proxies=True)), 8)
+        self.assertEqual(len(benchmark_systems(include_controls=True, include_literature_proxies=True)), 7)
 
     def test_aggregate_reports_binary_diagnostic_metrics(self) -> None:
         scores = [

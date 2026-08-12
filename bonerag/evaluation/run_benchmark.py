@@ -213,7 +213,7 @@ def main() -> None:
     parser.add_argument(
         "--include-controls",
         action="store_true",
-        help="Also run Text-only RAG and answer-calibration control rows.",
+        help="Also run the BoneRAG answer-calibration control row.",
     )
     parser.add_argument(
         "--include-literature-proxies",

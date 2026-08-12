@@ -218,7 +218,7 @@ def _rule_based_benchmark_analysis(summary: dict) -> str:
         delta_p4 = metric(ours, "evidence_label_precision_at_4") - metric(multimodal, "evidence_label_precision_at_4")
         delta_answer = metric(ours, "answer_label_accuracy") - metric(multimodal, "answer_label_accuracy")
         lines.append(
-            f"- So với Image + Text RAG, BoneRAG chênh Top-1 {delta_top1:+.1%}, P@4 {delta_p4:+.1%}, Answer {delta_answer:+.1%}."
+            f"- So với Image + Metadata RAG, BoneRAG chênh Top-1 {delta_top1:+.1%}, P@4 {delta_p4:+.1%}, Answer {delta_answer:+.1%}."
         )
         if delta_top1 <= 0 and delta_p4 <= 0:
             lines.append("- Chưa nên claim BoneRAG là retrieval method tốt hơn; cần cải thiện reranker/evidence selection trước.")
@@ -584,6 +584,7 @@ class BoneRAGHandler(BaseHTTPRequestHandler):
         self,
         encoder_name: str,
         generator_name: str,
+        total_cases: int = 32,
         include_controls: bool = False,
         include_literature_proxies: bool = False,
     ) -> Iterator[dict[str, object]]:
@@ -607,7 +608,8 @@ class BoneRAGHandler(BaseHTTPRequestHandler):
         }
         try:
             pipe = _get_pipeline(config)
-            cases = build_cases(pipe.records, cases_per_label=16)
+            safe_total_cases = max(2, min(512, int(total_cases)))
+            cases = build_cases(pipe.records, cases_per_label=max(1, safe_total_cases // 2))
             systems = benchmark_systems(
                 include_controls=include_controls,
                 include_literature_proxies=include_literature_proxies,
@@ -835,10 +837,15 @@ class BoneRAGHandler(BaseHTTPRequestHandler):
             gen_name = _normalize_generator_name(qs.get("generator", [_ACTIVE_CONFIG.get("generator", "local_context_synth")])[0])
             include_controls = qs.get("include_controls", ["0"])[0].lower() in {"1", "true", "yes"}
             include_literature_proxies = qs.get("include_literature_proxies", ["0"])[0].lower() in {"1", "true", "yes"}
+            try:
+                total_cases = int(qs.get("cases", ["32"])[0])
+            except (TypeError, ValueError):
+                total_cases = 32
             self._send_sse(
                 self._live_benchmark_stream_events(
                     enc_name,
                     gen_name,
+                    total_cases=total_cases,
                     include_controls=include_controls,
                     include_literature_proxies=include_literature_proxies,
                 )

@@ -24,7 +24,7 @@ from bonerag.main_algo.data import (
 from bonerag.main_algo.pipeline import BoneRAGPipeline, PipelineResult
 
 
-BENCHMARK_VERSION = "bonerag-fracatlas-image-v1"
+BENCHMARK_VERSION = "bonerag-fracatlas-image-v2"
 
 
 def benchmark_runs_path() -> Path:
@@ -49,17 +49,6 @@ class BenchmarkCase:
     source: str = "FracAtlas"
 
 
-CONTROL_SYSTEMS: tuple[dict[str, Any], ...] = (
-    {
-        "key": "text_rag",
-        "label": "Text-only RAG",
-        "description": "Control sanity check: chỉ truy vấn text trên cùng corpus/index, không dùng ảnh query.",
-        "use_image": False,
-        "rerank": False,
-    },
-)
-
-
 PRIMARY_SYSTEMS: tuple[dict[str, Any], ...] = (
     {
         "key": "image_rag",
@@ -71,8 +60,8 @@ PRIMARY_SYSTEMS: tuple[dict[str, Any], ...] = (
     },
     {
         "key": "multimodal_rag",
-        "label": "Image + Text RAG",
-        "description": "Blend 60% image + 40% text, không reranking domain.",
+        "label": "Image + Metadata RAG",
+        "description": "Blend 60% image + 40% metadata/query text, không dùng external text corpus.",
         "use_image": True,
         "image_alpha": 0.6,
         "rerank": False,
@@ -80,7 +69,7 @@ PRIMARY_SYSTEMS: tuple[dict[str, Any], ...] = (
     {
         "key": "bonerag",
         "label": "BoneRAG (ours)",
-        "description": "Image + text, anatomical/pathology reranking và evidence gate.",
+        "description": "Image + metadata/query text, anatomical/pathology reranking và evidence gate.",
         "use_image": True,
         "image_alpha": 0.6,
         "rerank": True,
@@ -92,7 +81,7 @@ LITERATURE_PROXY_SYSTEMS: tuple[dict[str, Any], ...] = (
     {
         "key": "mmedrag_adaptive_context_proxy",
         "label": "MMed-RAG-inspired Adaptive Context",
-        "description": "Exploratory proxy: image+text với top-k context lớn hơn để kiểm tra adaptive-context. Không phải reproduction chính thức của MMed-RAG.",
+        "description": "Exploratory proxy: image+metadata với top-k context lớn hơn để kiểm tra adaptive-context. Không phải reproduction chính thức của MMed-RAG.",
         "use_image": True,
         "image_alpha": 0.6,
         "rerank": False,
@@ -117,7 +106,7 @@ LITERATURE_PROXY_SYSTEMS: tuple[dict[str, Any], ...] = (
     {
         "key": "rule_gated_proxy",
         "label": "RULE-inspired Gated RAG",
-        "description": "Exploratory proxy: image+text với evidence gate nghiêm hơn để kiểm tra reliability/safety. Không phải reproduction chính thức của RULE.",
+        "description": "Exploratory proxy: image+metadata với evidence gate nghiêm hơn để kiểm tra reliability/safety. Không phải reproduction chính thức của RULE.",
         "use_image": True,
         "image_alpha": 0.6,
         "rerank": False,
@@ -147,12 +136,12 @@ def benchmark_systems(
     include_controls: bool = False,
     include_literature_proxies: bool = False,
 ) -> tuple[dict[str, Any], ...]:
-    """Return the publishable default systems, optionally with sanity controls."""
+    """Return the publishable default systems, optionally with audit-only rows."""
     systems = PRIMARY_SYSTEMS
     if include_literature_proxies:
         systems = systems + LITERATURE_PROXY_SYSTEMS
     if include_controls:
-        systems = CONTROL_SYSTEMS + systems + ANSWER_ABLATION_SYSTEMS
+        systems = systems + ANSWER_ABLATION_SYSTEMS
     return systems
 
 
@@ -276,10 +265,6 @@ def _run_one_case(
             pipeline.reranker.hard_negative_penalty = float(weights.get("hard_negative_penalty", pipeline.reranker.hard_negative_penalty))
         start = time.perf_counter()
         question = case.question
-        if not system["use_image"]:
-            # Keep the text-only baseline in-domain without leaking the label or
-            # the query image id into the text encoder.
-            question = f"{case.question}\n\nSelected image context: modality X-ray."
         events: Iterator[dict[str, object]] = pipeline.answer_events(
             question,
             image_input=case.query_image_path if system["use_image"] else None,

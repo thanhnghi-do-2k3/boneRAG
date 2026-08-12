@@ -1,4 +1,4 @@
-# BoneRAG Image RAG Benchmark v1
+# BoneRAG Image RAG Benchmark v2
 
 ## Purpose
 
@@ -27,26 +27,25 @@ ablations, not reproductions of published systems. The default publishable
 matrix excludes controls to keep the result focused and efficient:
 
 1. `Image-only RAG`: image vector weight 1.0.
-2. `Image + Text RAG`: image weight 0.6 and text weight 0.4.
-3. `BoneRAG (ours)`: image/text blend plus anatomical-pathology reranking and
-   evidence gate.
+2. `Image + Metadata RAG`: image weight 0.6 and metadata/query-text weight
+   0.4. This is not a separate clinical-document RAG baseline.
+3. `BoneRAG (ours)`: image/metadata blend plus anatomical-pathology reranking
+   and evidence gate.
 
-Optional controls can be enabled for auditing:
+Optional answer-level control can be enabled for auditing:
 
-- `Text-only RAG`: text query, no image vector. This is a sanity control, not a
-  clinically meaningful image diagnosis baseline.
 - `BoneRAG + Answer Calibration`: same retrieval as BoneRAG, plus an explicit
   evidence-derived conclusion footer. This row is an answer-level ablation and
   must not be used as evidence that retrieval improved.
 
 Optional literature-inspired proxies can be enabled for exploratory analysis:
 
-- `MMed-RAG-inspired Adaptive Context`: Image+Text retrieval with a larger
+- `MMed-RAG-inspired Adaptive Context`: Image+Metadata retrieval with a larger
   context window. This is not an official MMed-RAG reproduction.
-- `FactMM-RAG-inspired Fact Rerank`: Image+Text retrieval with lighter
+- `FactMM-RAG-inspired Fact Rerank`: Image+Metadata retrieval with lighter
   anatomy/pathology evidence reranking. This is not an official FactMM-RAG
   reproduction.
-- `RULE-inspired Gated RAG`: Image+Text retrieval with a stricter evidence gate.
+- `RULE-inspired Gated RAG`: Image+Metadata retrieval with a stricter evidence gate.
   This is not an official RULE reproduction.
 
 These proxy rows may be discussed as design probes, but they must not be used
@@ -109,11 +108,18 @@ python3 -m bonerag.evaluation.run_benchmark \
   --encoder biomedclip --generator synth --cases 32
 ```
 
-To include control rows:
+To include the answer-control row:
 
 ```bash
 python3 -m bonerag.evaluation.run_benchmark \
   --encoder biomedclip --generator synth --cases 32 --include-controls
+```
+
+Use a larger balanced case count to check stability:
+
+```bash
+python3 -m bonerag.evaluation.run_benchmark \
+  --encoder biomedclip --generator synth --cases 128
 ```
 
 To include literature-inspired proxy rows:
@@ -137,7 +143,7 @@ silently switching to the toy corpus.
 ## What it can support
 
 This benchmark supports claims such as: “BoneRAG is evaluated against internal
-Text-only, Image-only, and Image+Text ablations on the fixed FracAtlas protocol.”
+Image-only and Image+Metadata ablations on the fixed FracAtlas protocol.”
 It supports an improvement claim only when the measured numbers improve over
 the matching internal baseline. It does not support a claim that BoneRAG is
 superior to a published medical VQA/RAG system unless that system is run on this

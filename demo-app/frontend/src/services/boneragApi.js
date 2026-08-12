@@ -176,10 +176,17 @@ export function openAnswerStream(question, { sessionId, questionRaw, attachedIma
   return openSSEStream('/api/answer-stream', params);
 }
 
-export function openBenchmarkStream({ encoder, generator, includeControls, includeLiteratureProxies } = {}) {
+export function openBenchmarkStream({
+  encoder,
+  generator,
+  cases,
+  includeControls,
+  includeLiteratureProxies,
+} = {}) {
   return openSSEStream('/api/run-live-benchmark', {
     encoder: encoder || 'biomedclip',
     generator: generator || 'local_context_synth',
+    cases: String(cases || 32),
     include_controls: includeControls ? '1' : '0',
     include_literature_proxies: includeLiteratureProxies ? '1' : '0',
   });

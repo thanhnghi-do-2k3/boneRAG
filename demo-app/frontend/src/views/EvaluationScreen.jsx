@@ -47,6 +47,7 @@ function BenchmarkChart({ systems }) {
 export function EvaluationScreen() {
   const [encoder, setEncoder] = useState('biomedclip');
   const [generator, setGenerator] = useState('local_context_synth');
+  const [caseCount, setCaseCount] = useState(32);
   const [includeControls, setIncludeControls] = useState(false);
   const [includeLiteratureProxies, setIncludeLiteratureProxies] = useState(false);
   const [isRunning, setIsRunning] = useState(false);
@@ -77,6 +78,7 @@ export function EvaluationScreen() {
     const eventSource = openBenchmarkStream({
       encoder,
       generator,
+      cases: caseCount,
       includeControls,
       includeLiteratureProxies,
     });
@@ -104,6 +106,7 @@ export function EvaluationScreen() {
             protocol: data.summary,
             encoder,
             generator,
+            cases: caseCount,
             include_controls: includeControls,
             include_literature_proxies: includeLiteratureProxies,
             systems: data.summary.systems,
@@ -207,6 +210,20 @@ export function EvaluationScreen() {
               <option value="smollm_17b">SmolLM2-1.7B</option>
             </select>
           </label>
+          <label>
+            <span className="config-field-label">Số ảnh test</span>
+            <select
+              className="config-select"
+              value={caseCount}
+              onChange={(event) => setCaseCount(Number(event.target.value))}
+              disabled={isRunning}
+            >
+              <option value={32}>32 ảnh</option>
+              <option value={64}>64 ảnh</option>
+              <option value={128}>128 ảnh</option>
+              <option value={256}>256 ảnh</option>
+            </select>
+          </label>
           <label className="benchmark-control-toggle">
             <input
               type="checkbox"
@@ -215,8 +232,8 @@ export function EvaluationScreen() {
               disabled={isRunning}
             />
             <span>
-              Chạy thêm control
-              <small>Text-only và answer calibration; dùng để audit, không phải bảng chính.</small>
+              Chạy answer ablation
+              <small>Thêm BoneRAG + Answer Calibration; không phải retrieval claim.</small>
             </span>
           </label>
           <label className="benchmark-control-toggle">
