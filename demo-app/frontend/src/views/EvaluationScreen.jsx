@@ -48,6 +48,7 @@ export function EvaluationScreen() {
   const [encoder, setEncoder] = useState('biomedclip');
   const [generator, setGenerator] = useState('local_context_synth');
   const [includeControls, setIncludeControls] = useState(false);
+  const [includeLiteratureProxies, setIncludeLiteratureProxies] = useState(false);
   const [isRunning, setIsRunning] = useState(false);
   const [logs, setLogs] = useState([]);
   const [progress, setProgress] = useState({ current: 0, total: 128 });
@@ -73,7 +74,12 @@ export function EvaluationScreen() {
     setCompletedSummary(null);
     setAnalysis(null);
 
-    const eventSource = openBenchmarkStream({ encoder, generator, includeControls });
+    const eventSource = openBenchmarkStream({
+      encoder,
+      generator,
+      includeControls,
+      includeLiteratureProxies,
+    });
     eventSource.onmessage = (event) => {
       try {
         const data = JSON.parse(event.data);
@@ -99,6 +105,7 @@ export function EvaluationScreen() {
             encoder,
             generator,
             include_controls: includeControls,
+            include_literature_proxies: includeLiteratureProxies,
             systems: data.summary.systems,
           }, ...prev.filter((run) => run.run_id !== data.run_id)].slice(0, 20));
           setIsRunning(false);
@@ -210,6 +217,18 @@ export function EvaluationScreen() {
             <span>
               Chạy thêm control
               <small>Text-only và answer calibration; dùng để audit, không phải bảng chính.</small>
+            </span>
+          </label>
+          <label className="benchmark-control-toggle">
+            <input
+              type="checkbox"
+              checked={includeLiteratureProxies}
+              onChange={(event) => setIncludeLiteratureProxies(event.target.checked)}
+              disabled={isRunning}
+            />
+            <span>
+              Chạy proxy từ paper
+              <small>MMed-RAG/FactMM-RAG/RULE-inspired; không phải official reproduction.</small>
             </span>
           </label>
           <button className="primary-button" onClick={handleRunBenchmark} disabled={isRunning}>

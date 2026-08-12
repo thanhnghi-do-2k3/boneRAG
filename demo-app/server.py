@@ -585,6 +585,7 @@ class BoneRAGHandler(BaseHTTPRequestHandler):
         encoder_name: str,
         generator_name: str,
         include_controls: bool = False,
+        include_literature_proxies: bool = False,
     ) -> Iterator[dict[str, object]]:
         """Run the reproducible real-image matrix and stream every case over SSE."""
         from evaluation.benchmark import (
@@ -607,7 +608,10 @@ class BoneRAGHandler(BaseHTTPRequestHandler):
         try:
             pipe = _get_pipeline(config)
             cases = build_cases(pipe.records, cases_per_label=16)
-            systems = benchmark_systems(include_controls=include_controls)
+            systems = benchmark_systems(
+                include_controls=include_controls,
+                include_literature_proxies=include_literature_proxies,
+            )
             protocol = protocol_metadata(cases, systems=systems)
         except Exception as exc:
             yield {
@@ -830,7 +834,15 @@ class BoneRAGHandler(BaseHTTPRequestHandler):
             enc_name = qs.get("encoder", [_ACTIVE_CONFIG.get("encoder", "biomedclip")])[0]
             gen_name = _normalize_generator_name(qs.get("generator", [_ACTIVE_CONFIG.get("generator", "local_context_synth")])[0])
             include_controls = qs.get("include_controls", ["0"])[0].lower() in {"1", "true", "yes"}
-            self._send_sse(self._live_benchmark_stream_events(enc_name, gen_name, include_controls=include_controls))
+            include_literature_proxies = qs.get("include_literature_proxies", ["0"])[0].lower() in {"1", "true", "yes"}
+            self._send_sse(
+                self._live_benchmark_stream_events(
+                    enc_name,
+                    gen_name,
+                    include_controls=include_controls,
+                    include_literature_proxies=include_literature_proxies,
+                )
+            )
             return
 
         if self._serve_frontend_asset(route):

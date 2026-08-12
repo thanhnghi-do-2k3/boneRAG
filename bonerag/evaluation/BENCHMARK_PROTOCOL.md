@@ -39,6 +39,19 @@ Optional controls can be enabled for auditing:
   evidence-derived conclusion footer. This row is an answer-level ablation and
   must not be used as evidence that retrieval improved.
 
+Optional literature-inspired proxies can be enabled for exploratory analysis:
+
+- `MMed-RAG-inspired Adaptive Context`: Image+Text retrieval with a larger
+  context window. This is not an official MMed-RAG reproduction.
+- `FactMM-RAG-inspired Fact Rerank`: Image+Text retrieval with lighter
+  anatomy/pathology evidence reranking. This is not an official FactMM-RAG
+  reproduction.
+- `RULE-inspired Gated RAG`: Image+Text retrieval with a stricter evidence gate.
+  This is not an official RULE reproduction.
+
+These proxy rows may be discussed as design probes, but they must not be used
+to claim superiority over the corresponding published methods.
+
 ## Metrics
 
 - `retrieval_top1_label_accuracy`: top retrieved evidence has the true folder
@@ -101,6 +114,13 @@ To include control rows:
 ```bash
 python3 -m bonerag.evaluation.run_benchmark \
   --encoder biomedclip --generator synth --cases 32 --include-controls
+```
+
+To include literature-inspired proxy rows:
+
+```bash
+python3 -m bonerag.evaluation.run_benchmark \
+  --encoder biomedclip --generator synth --cases 32 --include-literature-proxies
 ```
 
 For a local environment, install

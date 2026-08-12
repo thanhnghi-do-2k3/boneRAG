@@ -88,6 +88,45 @@ PRIMARY_SYSTEMS: tuple[dict[str, Any], ...] = (
 )
 
 
+LITERATURE_PROXY_SYSTEMS: tuple[dict[str, Any], ...] = (
+    {
+        "key": "mmedrag_adaptive_context_proxy",
+        "label": "MMed-RAG-inspired Adaptive Context",
+        "description": "Exploratory proxy: image+text với top-k context lớn hơn để kiểm tra adaptive-context. Không phải reproduction chính thức của MMed-RAG.",
+        "use_image": True,
+        "image_alpha": 0.6,
+        "rerank": False,
+        "top_k": 6,
+        "paper_reference": "MMed-RAG-inspired proxy, not official reproduction",
+    },
+    {
+        "key": "factmm_rerank_proxy",
+        "label": "FactMM-RAG-inspired Fact Rerank",
+        "description": "Exploratory proxy: rerank nhẹ theo anatomy/pathology để kiểm tra fact-aware evidence ordering. Không phải reproduction chính thức của FactMM-RAG.",
+        "use_image": True,
+        "image_alpha": 0.6,
+        "rerank": True,
+        "reranker_weights": {
+            "weight_sim": 0.65,
+            "weight_anatomy": 0.25,
+            "weight_pathology": 0.10,
+            "hard_negative_penalty": 0.15,
+        },
+        "paper_reference": "FactMM-RAG-inspired proxy, not official reproduction",
+    },
+    {
+        "key": "rule_gated_proxy",
+        "label": "RULE-inspired Gated RAG",
+        "description": "Exploratory proxy: image+text với evidence gate nghiêm hơn để kiểm tra reliability/safety. Không phải reproduction chính thức của RULE.",
+        "use_image": True,
+        "image_alpha": 0.6,
+        "rerank": False,
+        "min_similarity": 0.08,
+        "paper_reference": "RULE-inspired proxy, not official reproduction",
+    },
+)
+
+
 ANSWER_ABLATION_SYSTEMS: tuple[dict[str, Any], ...] = (
     {
         "key": "bonerag_answer_calibrated",
@@ -104,11 +143,17 @@ ANSWER_ABLATION_SYSTEMS: tuple[dict[str, Any], ...] = (
 SYSTEMS: tuple[dict[str, Any], ...] = PRIMARY_SYSTEMS
 
 
-def benchmark_systems(include_controls: bool = False) -> tuple[dict[str, Any], ...]:
+def benchmark_systems(
+    include_controls: bool = False,
+    include_literature_proxies: bool = False,
+) -> tuple[dict[str, Any], ...]:
     """Return the publishable default systems, optionally with sanity controls."""
+    systems = PRIMARY_SYSTEMS
+    if include_literature_proxies:
+        systems = systems + LITERATURE_PROXY_SYSTEMS
     if include_controls:
-        return CONTROL_SYSTEMS + PRIMARY_SYSTEMS + ANSWER_ABLATION_SYSTEMS
-    return PRIMARY_SYSTEMS
+        systems = CONTROL_SYSTEMS + systems + ANSWER_ABLATION_SYSTEMS
+    return systems
 
 
 def _even_sample(records: list[ImageRecord], count: int) -> list[ImageRecord]:

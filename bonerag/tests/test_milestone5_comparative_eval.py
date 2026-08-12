@@ -36,6 +36,8 @@ class TestMilestone5ComparativeEval(unittest.TestCase):
         self.assertTrue(protocol["test_ids_excluded_from_retrieval"])
         self.assertEqual(len(SYSTEMS), 3)
         self.assertEqual(len(benchmark_systems(include_controls=True)), 5)
+        self.assertEqual(len(benchmark_systems(include_literature_proxies=True)), 6)
+        self.assertEqual(len(benchmark_systems(include_controls=True, include_literature_proxies=True)), 8)
 
     def test_aggregate_reports_binary_diagnostic_metrics(self) -> None:
         scores = [

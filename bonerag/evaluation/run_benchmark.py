@@ -86,10 +86,14 @@ def _run_generator_matrix(
     encoder_name: str,
     cases_per_label: int,
     include_controls: bool = False,
+    include_literature_proxies: bool = False,
 ) -> dict[str, Any]:
     pipeline = _make_pipeline(encoder_name, generator_name)
     cases = build_cases(pipeline.records, cases_per_label=cases_per_label)
-    systems = benchmark_systems(include_controls=include_controls)
+    systems = benchmark_systems(
+        include_controls=include_controls,
+        include_literature_proxies=include_literature_proxies,
+    )
     protocol = protocol_metadata(cases, systems=systems)
     test_query_ids = {case.query_image_id for case in cases}
     system_results: list[dict[str, Any]] = []
@@ -142,6 +146,7 @@ def run_benchmark_matrix(
     max_cases: int | None = None,
     encoder_name: str = "biomedclip",
     include_controls: bool = False,
+    include_literature_proxies: bool = False,
 ) -> list[dict[str, Any]]:
     """Run the same real benchmark protocol as the web Evaluation tab.
 
@@ -160,6 +165,7 @@ def run_benchmark_matrix(
             encoder_name,
             cases_per_label,
             include_controls=include_controls,
+            include_literature_proxies=include_literature_proxies,
         )
         for mode in modes
     ]
@@ -209,6 +215,11 @@ def main() -> None:
         action="store_true",
         help="Also run Text-only RAG and answer-calibration control rows.",
     )
+    parser.add_argument(
+        "--include-literature-proxies",
+        action="store_true",
+        help="Also run MMed-RAG/FactMM-RAG/RULE-inspired exploratory proxy rows; not official reproductions.",
+    )
     args = parser.parse_args()
 
     try:
@@ -217,6 +228,7 @@ def main() -> None:
             max_cases=args.cases,
             encoder_name=args.encoder,
             include_controls=args.include_controls,
+            include_literature_proxies=args.include_literature_proxies,
         )
     except (FileNotFoundError, RuntimeError, ValueError, ModuleNotFoundError, OSError) as exc:
         print(f"[benchmark] ERROR: {exc}", file=sys.stderr)
