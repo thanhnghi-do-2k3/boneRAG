@@ -22,22 +22,17 @@ FactMM-RAG because those papers use different datasets and tasks.
 ## Systems
 
 Every system uses the same encoder, FAISS index, corpus, top-k, generator, and
-case order. Only the retrieval condition changes:
+case order unless explicitly stated. These systems are internal baselines and
+ablations, not reproductions of published systems:
 
 1. `Text-only RAG`: text query, no image vector.
 2. `Image-only RAG`: image vector weight 1.0.
 3. `Image + Text RAG`: image weight 0.6 and text weight 0.4.
-4. `MMed-RAG-style Adaptive Context`: paper-inspired proxy with image/text
-   retrieval and a larger context window. This is not an official MMed-RAG
-   reproduction.
-5. `FactMM-RAG-style Fact Rerank`: paper-inspired proxy with lighter
-   fact/anatomy-aware evidence reranking. This is not an official FactMM-RAG
-   reproduction.
-6. `RULE-style Gated RAG`: paper-inspired proxy with a stricter evidence gate
-   for reliability. This is not an official RULE reproduction.
-7. `BoneRAG (ours)`: image/text blend plus anatomical-pathology reranking,
-   conservative top-k evidence-label consensus, calibrated answer footer, and
+4. `BoneRAG (ours)`: image/text blend plus anatomical-pathology reranking and
    evidence gate.
+5. `BoneRAG + Answer Calibration`: same retrieval as BoneRAG, plus an explicit
+   evidence-derived conclusion footer. This row is an answer-level ablation and
+   must not be used as evidence that retrieval improved.
 
 ## Metrics
 
@@ -109,8 +104,9 @@ silently switching to the toy corpus.
 
 ## What it can support
 
-This benchmark supports claims such as: “BoneRAG improves top-1 label
-retrieval over our text-only and un-reranked multimodal baselines on the fixed
-FracAtlas protocol.” It does not support a claim that BoneRAG is superior to a
-published medical VQA system unless that system is run on this exact protocol
-or both methods are evaluated on a shared public benchmark.
+This benchmark supports claims such as: “BoneRAG is evaluated against internal
+Text-only, Image-only, and Image+Text ablations on the fixed FracAtlas protocol.”
+It supports an improvement claim only when the measured numbers improve over
+the matching internal baseline. It does not support a claim that BoneRAG is
+superior to a published medical VQA/RAG system unless that system is run on this
+exact protocol or both methods are evaluated on a shared public benchmark.

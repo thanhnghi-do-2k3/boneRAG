@@ -205,6 +205,7 @@ def _rule_based_benchmark_analysis(summary: dict) -> str:
     best_retrieval = max(systems, key=lambda item: metric(item, "retrieval_top1_label_accuracy"))
     best_answer = max(systems, key=lambda item: metric(item, "answer_label_accuracy"))
     ours = next((item for item in systems if item.get("system_key") == "bonerag"), None)
+    calibrated = next((item for item in systems if item.get("system_key") == "bonerag_answer_calibrated"), None)
     multimodal = next((item for item in systems if item.get("system_key") == "multimodal_rag"), None)
 
     lines = [
@@ -223,7 +224,12 @@ def _rule_based_benchmark_analysis(summary: dict) -> str:
             lines.append("- Chưa nên claim BoneRAG là retrieval method tốt hơn; cần cải thiện reranker/evidence selection trước.")
         elif delta_top1 > 0 or delta_p4 > 0:
             lines.append("- Có tín hiệu cải thiện retrieval, nhưng vẫn nên báo confidence interval và phân tích per-case.")
-    lines.append("- Các dòng MMed-RAG/RULE/FactMM-RAG trong bảng là proxy paper-inspired, không phải reproduction chính thức của paper.")
+    if ours and calibrated:
+        delta_cal_answer = metric(calibrated, "answer_label_accuracy") - metric(ours, "answer_label_accuracy")
+        lines.append(
+            f"- Answer calibration chênh BoneRAG gốc {delta_cal_answer:+.1%}; nếu tăng thì chỉ được claim cải thiện answer-level, không phải retrieval-level."
+        )
+    lines.append("- Bảng này là internal ablation. Không so trực tiếp với MMed-RAG/RULE/FactMM-RAG nếu chưa chạy official method trên cùng protocol.")
     return "\n".join(lines)
 
 
@@ -253,9 +259,10 @@ def _gemini_benchmark_analysis(summary: dict, cases: list | None = None) -> tupl
                 })
     prompt = (
         "Bạn là reviewer nghiên cứu Medical Image RAG. Hãy nhận xét benchmark này bằng tiếng Việt, "
-        "ngắn gọn nhưng sắc bén. Phân biệt rõ baseline nội bộ với proxy paper-inspired; không được claim "
-        "vượt paper nếu chưa reproduction chính thức. Nêu: hệ tốt nhất theo retrieval, hệ tốt nhất theo answer, "
-        "BoneRAG có đủ mạnh chưa, lỗi metric/thiên lệch cần kiểm tra, và 3 bước cải thiện tiếp theo.\n\n"
+        "ngắn gọn nhưng sắc bén. Đây là internal ablation, không phải so sánh trực tiếp với paper khác. "
+        "Không được claim vượt MMed-RAG/RULE/FactMM-RAG nếu chưa reproduction chính thức. Nêu: hệ tốt nhất theo retrieval, "
+        "hệ tốt nhất theo answer, BoneRAG có đủ mạnh chưa, calibration có chỉ cải thiện answer-level hay không, "
+        "lỗi metric/thiên lệch cần kiểm tra, và 3 bước cải thiện tiếp theo.\n\n"
         f"SUMMARY JSON:\n{json.dumps(summary, ensure_ascii=False)[:12000]}\n\n"
         f"CASE AUDIT SAMPLE:\n{json.dumps(compact_cases, ensure_ascii=False)[:12000]}"
     )

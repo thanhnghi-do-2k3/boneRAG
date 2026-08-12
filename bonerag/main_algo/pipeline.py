@@ -139,8 +139,8 @@ class BoneRAGPipeline:
         self.gate = EvidenceGate(min_similarity=self.min_similarity)
         self.citation_formatter = EvidenceCitationSynthesizer()
         self.factuality_auditor = FactualityAuditor()
-        self.enable_label_consensus_rerank = True
-        self.enable_answer_calibration = True
+        self.enable_label_consensus_rerank = False
+        self.enable_answer_calibration = False
         self.index = self._build_index()
 
     def _build_index(self) -> InMemoryVectorIndex | FAISSVectorIndex:
