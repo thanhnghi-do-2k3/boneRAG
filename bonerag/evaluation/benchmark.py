@@ -49,14 +49,18 @@ class BenchmarkCase:
     source: str = "FracAtlas"
 
 
-SYSTEMS: tuple[dict[str, Any], ...] = (
+CONTROL_SYSTEMS: tuple[dict[str, Any], ...] = (
     {
         "key": "text_rag",
         "label": "Text-only RAG",
-        "description": "Chỉ truy vấn text trên cùng corpus/index.",
+        "description": "Control sanity check: chỉ truy vấn text trên cùng corpus/index, không dùng ảnh query.",
         "use_image": False,
         "rerank": False,
     },
+)
+
+
+PRIMARY_SYSTEMS: tuple[dict[str, Any], ...] = (
     {
         "key": "image_rag",
         "label": "Image-only RAG",
@@ -81,6 +85,10 @@ SYSTEMS: tuple[dict[str, Any], ...] = (
         "image_alpha": 0.6,
         "rerank": True,
     },
+)
+
+
+ANSWER_ABLATION_SYSTEMS: tuple[dict[str, Any], ...] = (
     {
         "key": "bonerag_answer_calibrated",
         "label": "BoneRAG + Answer Calibration",
@@ -91,6 +99,16 @@ SYSTEMS: tuple[dict[str, Any], ...] = (
         "answer_calibration": True,
     },
 )
+
+
+SYSTEMS: tuple[dict[str, Any], ...] = PRIMARY_SYSTEMS
+
+
+def benchmark_systems(include_controls: bool = False) -> tuple[dict[str, Any], ...]:
+    """Return the publishable default systems, optionally with sanity controls."""
+    if include_controls:
+        return CONTROL_SYSTEMS + PRIMARY_SYSTEMS + ANSWER_ABLATION_SYSTEMS
+    return PRIMARY_SYSTEMS
 
 
 def _even_sample(records: list[ImageRecord], count: int) -> list[ImageRecord]:
@@ -393,7 +411,7 @@ def _classification_metrics(
     }
 
 
-def protocol_metadata(cases: list[BenchmarkCase]) -> dict[str, Any]:
+def protocol_metadata(cases: list[BenchmarkCase], systems: tuple[dict[str, Any], ...] = SYSTEMS) -> dict[str, Any]:
     return {
         "benchmark_version": BENCHMARK_VERSION,
         "dataset": "FracAtlas",
@@ -404,6 +422,6 @@ def protocol_metadata(cases: list[BenchmarkCase]) -> dict[str, Any]:
         "test_ids_excluded_from_retrieval": True,
         "systems": [
             {key: value for key, value in system.items() if key != "description"}
-            for system in SYSTEMS
+            for system in systems
         ],
     }

@@ -176,10 +176,11 @@ export function openAnswerStream(question, { sessionId, questionRaw, attachedIma
   return openSSEStream('/api/answer-stream', params);
 }
 
-export function openBenchmarkStream({ encoder, generator } = {}) {
+export function openBenchmarkStream({ encoder, generator, includeControls } = {}) {
   return openSSEStream('/api/run-live-benchmark', {
     encoder: encoder || 'biomedclip',
     generator: generator || 'local_context_synth',
+    include_controls: includeControls ? '1' : '0',
   });
 }
 

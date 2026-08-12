@@ -11,6 +11,7 @@ from bonerag.evaluation.benchmark import (
     SYSTEMS,
     _diagnosis_from_text,
     aggregate_case_scores,
+    benchmark_systems,
     build_cases,
     protocol_metadata,
 )
@@ -33,7 +34,8 @@ class TestMilestone5ComparativeEval(unittest.TestCase):
         self.assertEqual(protocol["benchmark_version"], "bonerag-fracatlas-image-v1")
         self.assertTrue(protocol["test_holdout"])
         self.assertTrue(protocol["test_ids_excluded_from_retrieval"])
-        self.assertEqual(len(SYSTEMS), 5)
+        self.assertEqual(len(SYSTEMS), 3)
+        self.assertEqual(len(benchmark_systems(include_controls=True)), 5)
 
     def test_aggregate_reports_binary_diagnostic_metrics(self) -> None:
         scores = [

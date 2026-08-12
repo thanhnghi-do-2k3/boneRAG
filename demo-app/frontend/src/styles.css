@@ -520,6 +520,37 @@ textarea::placeholder {
   font-size: 0.78rem;
 }
 
+.benchmark-control-toggle {
+  min-height: 42px;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 9px 12px;
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  background: rgba(255, 255, 255, 0.025);
+}
+
+.benchmark-control-toggle input {
+  width: 16px;
+  height: 16px;
+  accent-color: var(--accent-strong);
+}
+
+.benchmark-control-toggle span {
+  display: grid;
+  gap: 2px;
+  color: var(--ink);
+  font-size: 0.84rem;
+  font-weight: 800;
+}
+
+.benchmark-control-toggle small {
+  color: var(--muted);
+  font-size: 0.72rem;
+  font-weight: 600;
+}
+
 .benchmark-progress {
   height: 8px;
   overflow: hidden;

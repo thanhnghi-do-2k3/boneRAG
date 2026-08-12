@@ -23,16 +23,21 @@ FactMM-RAG because those papers use different datasets and tasks.
 
 Every system uses the same encoder, FAISS index, corpus, top-k, generator, and
 case order unless explicitly stated. These systems are internal baselines and
-ablations, not reproductions of published systems:
+ablations, not reproductions of published systems. The default publishable
+matrix excludes controls to keep the result focused and efficient:
 
-1. `Text-only RAG`: text query, no image vector.
-2. `Image-only RAG`: image vector weight 1.0.
-3. `Image + Text RAG`: image weight 0.6 and text weight 0.4.
-4. `BoneRAG (ours)`: image/text blend plus anatomical-pathology reranking and
+1. `Image-only RAG`: image vector weight 1.0.
+2. `Image + Text RAG`: image weight 0.6 and text weight 0.4.
+3. `BoneRAG (ours)`: image/text blend plus anatomical-pathology reranking and
    evidence gate.
-5. `BoneRAG + Answer Calibration`: same retrieval as BoneRAG, plus an explicit
-   evidence-derived conclusion footer. This row is an answer-level ablation and
-   must not be used as evidence that retrieval improved.
+
+Optional controls can be enabled for auditing:
+
+- `Text-only RAG`: text query, no image vector. This is a sanity control, not a
+  clinically meaningful image diagnosis baseline.
+- `BoneRAG + Answer Calibration`: same retrieval as BoneRAG, plus an explicit
+  evidence-derived conclusion footer. This row is an answer-level ablation and
+  must not be used as evidence that retrieval improved.
 
 ## Metrics
 
@@ -89,6 +94,13 @@ The same run can be started without the web UI:
 ```bash
 python3 -m bonerag.evaluation.run_benchmark \
   --encoder biomedclip --generator synth --cases 32
+```
+
+To include control rows:
+
+```bash
+python3 -m bonerag.evaluation.run_benchmark \
+  --encoder biomedclip --generator synth --cases 32 --include-controls
 ```
 
 For a local environment, install

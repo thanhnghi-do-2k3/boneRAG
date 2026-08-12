@@ -21,9 +21,9 @@ from pathlib import Path
 from typing import Any
 
 from bonerag.evaluation.benchmark import (
-    SYSTEMS,
     aggregate_case_scores,
     benchmark_runs_path,
+    benchmark_systems,
     build_cases,
     protocol_metadata,
     run_system_case,
@@ -85,10 +85,12 @@ def _run_generator_matrix(
     generator_name: str,
     encoder_name: str,
     cases_per_label: int,
+    include_controls: bool = False,
 ) -> dict[str, Any]:
     pipeline = _make_pipeline(encoder_name, generator_name)
     cases = build_cases(pipeline.records, cases_per_label=cases_per_label)
-    protocol = protocol_metadata(cases)
+    systems = benchmark_systems(include_controls=include_controls)
+    protocol = protocol_metadata(cases, systems=systems)
     test_query_ids = {case.query_image_id for case in cases}
     system_results: list[dict[str, Any]] = []
 
@@ -98,7 +100,7 @@ def _run_generator_matrix(
     )
     print(f"[benchmark] fingerprint={protocol['dataset_fingerprint']}")
 
-    for system in SYSTEMS:
+    for system in systems:
         case_scores: list[dict[str, Any]] = []
         print(f"[benchmark] system={system['label']}")
         for index, case in enumerate(cases, start=1):
@@ -139,6 +141,7 @@ def run_benchmark_matrix(
     generator_mode: str = "synth",
     max_cases: int | None = None,
     encoder_name: str = "biomedclip",
+    include_controls: bool = False,
 ) -> list[dict[str, Any]]:
     """Run the same real benchmark protocol as the web Evaluation tab.
 
@@ -152,7 +155,12 @@ def run_benchmark_matrix(
 
     cases_per_label = 16 if not max_cases else max(1, max_cases // 2)
     runs = [
-        _run_generator_matrix(GENERATOR_MODES[mode], encoder_name, cases_per_label)
+        _run_generator_matrix(
+            GENERATOR_MODES[mode],
+            encoder_name,
+            cases_per_label,
+            include_controls=include_controls,
+        )
         for mode in modes
     ]
     return [
@@ -196,6 +204,11 @@ def main() -> None:
     parser.add_argument("--generator", choices=[*GENERATOR_MODES, "all"], default="synth")
     parser.add_argument("--encoder", choices=["biomedclip", "clip_vit_b32", "clip_vit_l14"], default="biomedclip")
     parser.add_argument("--cases", type=int, default=32, help="Total balanced cases; default: 32")
+    parser.add_argument(
+        "--include-controls",
+        action="store_true",
+        help="Also run Text-only RAG and answer-calibration control rows.",
+    )
     args = parser.parse_args()
 
     try:
@@ -203,6 +216,7 @@ def main() -> None:
             generator_mode=args.generator,
             max_cases=args.cases,
             encoder_name=args.encoder,
+            include_controls=args.include_controls,
         )
     except (FileNotFoundError, RuntimeError, ValueError, ModuleNotFoundError, OSError) as exc:
         print(f"[benchmark] ERROR: {exc}", file=sys.stderr)

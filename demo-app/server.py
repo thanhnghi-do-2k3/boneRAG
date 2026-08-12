@@ -580,10 +580,15 @@ class BoneRAGHandler(BaseHTTPRequestHandler):
 
             yield event
 
-    def _live_benchmark_stream_events(self, encoder_name: str, generator_name: str) -> Iterator[dict[str, object]]:
+    def _live_benchmark_stream_events(
+        self,
+        encoder_name: str,
+        generator_name: str,
+        include_controls: bool = False,
+    ) -> Iterator[dict[str, object]]:
         """Run the reproducible real-image matrix and stream every case over SSE."""
         from evaluation.benchmark import (
-            SYSTEMS,
+            benchmark_systems,
             build_cases,
             benchmark_runs_path,
             protocol_metadata,
@@ -602,7 +607,8 @@ class BoneRAGHandler(BaseHTTPRequestHandler):
         try:
             pipe = _get_pipeline(config)
             cases = build_cases(pipe.records, cases_per_label=16)
-            protocol = protocol_metadata(cases)
+            systems = benchmark_systems(include_controls=include_controls)
+            protocol = protocol_metadata(cases, systems=systems)
         except Exception as exc:
             yield {
                 "type": "bench-error",
@@ -610,25 +616,25 @@ class BoneRAGHandler(BaseHTTPRequestHandler):
             }
             return
 
-        total_runs = len(cases) * len(SYSTEMS)
+        total_runs = len(cases) * len(systems)
         test_query_ids = {case.query_image_id for case in cases}
         yield {
             "type": "bench-start",
             "total": total_runs,
             "total_cases": len(cases),
-            "systems": [system["label"] for system in SYSTEMS],
+            "systems": [system["label"] for system in systems],
             "protocol": protocol,
             "encoder": encoder_name,
             "generator": generator_name,
             "message": (
                 f"Bắt đầu {protocol['benchmark_version']}: {len(cases)} ảnh thật, "
-                f"{len(SYSTEMS)} hệ thống, toàn bộ test hold-out đã loại khỏi corpus."
+                f"{len(systems)} hệ thống, toàn bộ test hold-out đã loại khỏi corpus."
             ),
         }
 
         all_results: list[dict[str, object]] = []
         completed = 0
-        for system in SYSTEMS:
+        for system in systems:
             for case_index, case in enumerate(cases, start=1):
                 try:
                     result = run_system_case(pipe, case, system, test_query_ids=test_query_ids)
@@ -659,7 +665,7 @@ class BoneRAGHandler(BaseHTTPRequestHandler):
                     return
 
         system_summaries = []
-        for system in SYSTEMS:
+        for system in systems:
             scores = [item for item in all_results if item.get("system_key") == system["key"]]
             system_summaries.append({
                 "system_key": system["key"],
@@ -823,7 +829,8 @@ class BoneRAGHandler(BaseHTTPRequestHandler):
             qs = parse_qs(parsed.query)
             enc_name = qs.get("encoder", [_ACTIVE_CONFIG.get("encoder", "biomedclip")])[0]
             gen_name = _normalize_generator_name(qs.get("generator", [_ACTIVE_CONFIG.get("generator", "local_context_synth")])[0])
-            self._send_sse(self._live_benchmark_stream_events(enc_name, gen_name))
+            include_controls = qs.get("include_controls", ["0"])[0].lower() in {"1", "true", "yes"}
+            self._send_sse(self._live_benchmark_stream_events(enc_name, gen_name, include_controls=include_controls))
             return
 
         if self._serve_frontend_asset(route):

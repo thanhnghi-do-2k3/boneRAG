@@ -47,6 +47,7 @@ function BenchmarkChart({ systems }) {
 export function EvaluationScreen() {
   const [encoder, setEncoder] = useState('biomedclip');
   const [generator, setGenerator] = useState('local_context_synth');
+  const [includeControls, setIncludeControls] = useState(false);
   const [isRunning, setIsRunning] = useState(false);
   const [logs, setLogs] = useState([]);
   const [progress, setProgress] = useState({ current: 0, total: 128 });
@@ -72,7 +73,7 @@ export function EvaluationScreen() {
     setCompletedSummary(null);
     setAnalysis(null);
 
-    const eventSource = openBenchmarkStream({ encoder, generator });
+    const eventSource = openBenchmarkStream({ encoder, generator, includeControls });
     eventSource.onmessage = (event) => {
       try {
         const data = JSON.parse(event.data);
@@ -97,6 +98,7 @@ export function EvaluationScreen() {
             protocol: data.summary,
             encoder,
             generator,
+            include_controls: includeControls,
             systems: data.summary.systems,
           }, ...prev.filter((run) => run.run_id !== data.run_id)].slice(0, 20));
           setIsRunning(false);
@@ -157,7 +159,7 @@ export function EvaluationScreen() {
       <ScreenHeader
         eyebrow="Đánh giá reproducible"
         title="Benchmark Image RAG thật"
-        description="Một bộ ảnh FracAtlas cố định, toàn bộ test hold-out bị loại khỏi corpus, rồi chạy lần lượt bốn hệ thống để so sánh công bằng."
+        description="Một bộ ảnh FracAtlas cố định, toàn bộ test hold-out bị loại khỏi corpus, rồi chạy các ablation chính để so sánh công bằng."
       />
 
       <div className="panel benchmark-history-panel">
@@ -197,6 +199,18 @@ export function EvaluationScreen() {
               <option value="qwen_15b">Qwen2.5-1.5B</option>
               <option value="smollm_17b">SmolLM2-1.7B</option>
             </select>
+          </label>
+          <label className="benchmark-control-toggle">
+            <input
+              type="checkbox"
+              checked={includeControls}
+              onChange={(event) => setIncludeControls(event.target.checked)}
+              disabled={isRunning}
+            />
+            <span>
+              Chạy thêm control
+              <small>Text-only và answer calibration; dùng để audit, không phải bảng chính.</small>
+            </span>
           </label>
           <button className="primary-button" onClick={handleRunBenchmark} disabled={isRunning}>
             {isRunning ? `Đang chạy ${progress.current}/${progress.total}` : 'Chạy benchmark thật'}
