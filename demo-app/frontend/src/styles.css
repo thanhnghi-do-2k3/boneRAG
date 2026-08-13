@@ -777,10 +777,6 @@ textarea::placeholder {
   white-space: nowrap;
 }
 
-.benchmark-table td small.paper-proxy {
-  color: var(--accent-strong);
-}
-
 .benchmark-table .highlight-row {
   background: color-mix(in srgb, var(--accent) 8%, transparent);
 }

@@ -11,6 +11,7 @@ const chartMetrics = [
   ['evidence_label_mrr', 'MRR'],
   ['evidence_label_ndcg_at_4', 'nDCG@4'],
   ['answer_label_accuracy', 'Answer'],
+  ['answer_factuality_score', 'Faithful'],
 ];
 
 function BenchmarkChart({ systems }) {
@@ -49,7 +50,6 @@ export function EvaluationScreen() {
   const [generator, setGenerator] = useState('local_context_synth');
   const [caseCount, setCaseCount] = useState(32);
   const [includeControls, setIncludeControls] = useState(false);
-  const [includeLiteratureProxies, setIncludeLiteratureProxies] = useState(false);
   const [isRunning, setIsRunning] = useState(false);
   const [logs, setLogs] = useState([]);
   const [progress, setProgress] = useState({ current: 0, total: 128 });
@@ -80,7 +80,6 @@ export function EvaluationScreen() {
       generator,
       cases: caseCount,
       includeControls,
-      includeLiteratureProxies,
     });
     eventSource.onmessage = (event) => {
       try {
@@ -108,7 +107,6 @@ export function EvaluationScreen() {
             generator,
             cases: caseCount,
             include_controls: includeControls,
-            include_literature_proxies: includeLiteratureProxies,
             systems: data.summary.systems,
           }, ...prev.filter((run) => run.run_id !== data.run_id)].slice(0, 20));
           setIsRunning(false);
@@ -169,7 +167,7 @@ export function EvaluationScreen() {
       <ScreenHeader
         eyebrow="Đánh giá reproducible"
         title="Benchmark Image RAG thật"
-        description="Một bộ ảnh FracAtlas cố định, toàn bộ test hold-out bị loại khỏi corpus, rồi chạy các ablation chính để so sánh công bằng."
+        description="Binary FracAtlas retrieval/classification proxy: test hold-out bị loại khỏi corpus, rồi chạy Image-only và BoneRAG trên cùng bộ ảnh."
       />
 
       <div className="panel benchmark-history-panel">
@@ -236,18 +234,6 @@ export function EvaluationScreen() {
               <small>Thêm BoneRAG + Answer Calibration; không phải retrieval claim.</small>
             </span>
           </label>
-          <label className="benchmark-control-toggle">
-            <input
-              type="checkbox"
-              checked={includeLiteratureProxies}
-              onChange={(event) => setIncludeLiteratureProxies(event.target.checked)}
-              disabled={isRunning}
-            />
-            <span>
-              Chạy proxy từ paper
-              <small>MMed-RAG/FactMM-RAG/RULE-inspired; không phải official reproduction.</small>
-            </span>
-          </label>
           <button className="primary-button" onClick={handleRunBenchmark} disabled={isRunning}>
             {isRunning ? `Đang chạy ${progress.current}/${progress.total}` : 'Chạy benchmark thật'}
           </button>
@@ -305,6 +291,8 @@ export function EvaluationScreen() {
                   <th>Answer label</th>
                   <th>Answer F1</th>
                   <th>Answer BalAcc</th>
+                  <th>Ans/Evidence</th>
+                  <th>Factuality</th>
                   <th>Latency</th>
                   <th>Fallback generator</th>
                   <th>Cases</th>
@@ -315,7 +303,6 @@ export function EvaluationScreen() {
                   <tr key={system.system_key} className={system.system_key === 'bonerag' ? 'highlight-row' : ''}>
                     <td>
                       <strong>{system.system_label}</strong>
-                      {system.paper_reference && <small className="paper-proxy">{system.paper_reference}</small>}
                       <small>{system.description}</small>
                     </td>
                     <td>{percent(system.retrieval_top1_label_accuracy)}</td>
@@ -330,7 +317,7 @@ export function EvaluationScreen() {
                     <td>{percent(system.evidence_label_precision_at_4)}</td>
                     <td>
                       {percent(system.evidence_label_recall_at_4)}
-                      <small>MRR {decimal(system.evidence_label_mrr)} · nDCG {decimal(system.evidence_label_ndcg_at_4)}</small>
+                      <small>MRR {decimal(system.evidence_label_mrr)} · nDCG {decimal(system.evidence_label_ndcg_at_4)} · Cons {percent(system.evidence_label_consensus)}</small>
                     </td>
                     <td>{percent(system.answer_label_accuracy)}</td>
                     <td>
@@ -338,6 +325,14 @@ export function EvaluationScreen() {
                       <small>Unknown {system.answer_unknown ?? 0}</small>
                     </td>
                     <td>{percent(system.answer_balanced_accuracy)}</td>
+                    <td>
+                      {percent(system.answer_matches_evidence_majority)}
+                      <small>Top {percent(system.answer_matches_top_evidence)}</small>
+                    </td>
+                    <td>
+                      {percent(system.answer_factuality_score)}
+                      <small>Warn {percent(system.answer_hallucination_warning_rate)} · Unsup {system.answer_unsupported_claims ?? 0}</small>
+                    </td>
                     <td>{decimal(system.latency_ms)} ms</td>
                     <td>{percent(system.generator_fallback_rate)}</td>
                     <td>{system.n_cases}</td>
@@ -353,7 +348,7 @@ export function EvaluationScreen() {
         <div className="benchmark-table-wrap panel">
           <div className="benchmark-panel-heading"><div><span className="eyebrow">Case audit</span><h3>Chi tiết từng ảnh và từng system</h3></div><span>{evaluatedCases.length} rows</span></div>
           <table className="benchmark-table case-table">
-            <thead><tr><th>Case</th><th>System</th><th>Expected</th><th>Top evidence</th><th>Answer label</th><th>Evidence</th><th>Answer</th><th>Latency</th></tr></thead>
+            <thead><tr><th>Case</th><th>System</th><th>Expected</th><th>Top evidence</th><th>Evidence majority</th><th>Answer label</th><th>Evidence</th><th>Answer</th><th>Faithful</th><th>Latency</th></tr></thead>
             <tbody>
               {evaluatedCases.map((item, index) => (
                 <tr key={`${item.system_key}-${item.case_id}-${index}`}>
@@ -361,9 +356,11 @@ export function EvaluationScreen() {
                   <td>{item.system_label}</td>
                   <td>{item.expected_diagnosis}</td>
                   <td>{item.predicted_top_diagnosis || 'none'}</td>
+                  <td>{item.evidence_majority_diagnosis || 'tie'}<small>{percent(item.evidence_label_consensus)}</small></td>
                   <td>{item.answer_predicted_diagnosis || 'unknown'}</td>
                   <td>{percent(item.retrieval_top1_label_accuracy)}</td>
                   <td>{percent(item.answer_label_accuracy)}</td>
+                  <td>{percent(item.answer_factuality_score)}</td>
                   <td>{item.latency_ms} ms</td>
                 </tr>
               ))}

@@ -21,10 +21,12 @@ from bonerag.main_algo.data import (
     infer_diagnosis_from_image_path,
     resolve_dataset_image_path,
 )
+from bonerag.main_algo.factuality import FactualityAuditor
 from bonerag.main_algo.pipeline import BoneRAGPipeline, PipelineResult
 
 
-BENCHMARK_VERSION = "bonerag-fracatlas-image-v2"
+BENCHMARK_VERSION = "bonerag-fracatlas-image-v3"
+FACTUALITY_AUDITOR = FactualityAuditor()
 
 
 def benchmark_runs_path() -> Path:
@@ -59,59 +61,12 @@ PRIMARY_SYSTEMS: tuple[dict[str, Any], ...] = (
         "rerank": False,
     },
     {
-        "key": "multimodal_rag",
-        "label": "Image + Metadata RAG",
-        "description": "Blend 60% image + 40% metadata/query text, không dùng external text corpus.",
-        "use_image": True,
-        "image_alpha": 0.6,
-        "rerank": False,
-    },
-    {
         "key": "bonerag",
         "label": "BoneRAG (ours)",
-        "description": "Image + metadata/query text, anatomical/pathology reranking và evidence gate.",
+        "description": "Image retrieval với anatomical/pathology reranking và evidence gate.",
         "use_image": True,
-        "image_alpha": 0.6,
+        "image_alpha": 1.0,
         "rerank": True,
-    },
-)
-
-
-LITERATURE_PROXY_SYSTEMS: tuple[dict[str, Any], ...] = (
-    {
-        "key": "mmedrag_adaptive_context_proxy",
-        "label": "MMed-RAG-inspired Adaptive Context",
-        "description": "Exploratory proxy: image+metadata với top-k context lớn hơn để kiểm tra adaptive-context. Không phải reproduction chính thức của MMed-RAG.",
-        "use_image": True,
-        "image_alpha": 0.6,
-        "rerank": False,
-        "top_k": 6,
-        "paper_reference": "MMed-RAG-inspired proxy, not official reproduction",
-    },
-    {
-        "key": "factmm_rerank_proxy",
-        "label": "FactMM-RAG-inspired Fact Rerank",
-        "description": "Exploratory proxy: rerank nhẹ theo anatomy/pathology để kiểm tra fact-aware evidence ordering. Không phải reproduction chính thức của FactMM-RAG.",
-        "use_image": True,
-        "image_alpha": 0.6,
-        "rerank": True,
-        "reranker_weights": {
-            "weight_sim": 0.65,
-            "weight_anatomy": 0.25,
-            "weight_pathology": 0.10,
-            "hard_negative_penalty": 0.15,
-        },
-        "paper_reference": "FactMM-RAG-inspired proxy, not official reproduction",
-    },
-    {
-        "key": "rule_gated_proxy",
-        "label": "RULE-inspired Gated RAG",
-        "description": "Exploratory proxy: image+metadata với evidence gate nghiêm hơn để kiểm tra reliability/safety. Không phải reproduction chính thức của RULE.",
-        "use_image": True,
-        "image_alpha": 0.6,
-        "rerank": False,
-        "min_similarity": 0.08,
-        "paper_reference": "RULE-inspired proxy, not official reproduction",
     },
 )
 
@@ -122,7 +77,7 @@ ANSWER_ABLATION_SYSTEMS: tuple[dict[str, Any], ...] = (
         "label": "BoneRAG + Answer Calibration",
         "description": "BoneRAG retrieval giữ nguyên; chỉ thêm footer kết luận chuẩn hóa từ evidence để đo ảnh hưởng ở answer-level.",
         "use_image": True,
-        "image_alpha": 0.6,
+        "image_alpha": 1.0,
         "rerank": True,
         "answer_calibration": True,
     },
@@ -137,9 +92,10 @@ def benchmark_systems(
     include_literature_proxies: bool = False,
 ) -> tuple[dict[str, Any], ...]:
     """Return the publishable default systems, optionally with audit-only rows."""
+    # Kept for API/CLI compatibility. We do not run "paper-inspired" rows unless
+    # the actual published method is reproduced on the same dataset and split.
+    _ = include_literature_proxies
     systems = PRIMARY_SYSTEMS
-    if include_literature_proxies:
-        systems = systems + LITERATURE_PROXY_SYSTEMS
     if include_controls:
         systems = systems + ANSWER_ABLATION_SYSTEMS
     return systems
@@ -224,8 +180,16 @@ def _diagnosis_from_text(answer: str) -> str | None:
     return None
 
 
-def _label_in_text(answer: str, expected: str) -> bool:
-    return _diagnosis_from_text(answer) == expected
+def _majority_label(labels: list[str]) -> tuple[str | None, float]:
+    valid = [label for label in labels if label in {"fracture", "normal"}]
+    if not valid:
+        return None, 0.0
+    fracture_count = sum(label == "fracture" for label in valid)
+    normal_count = sum(label == "normal" for label in valid)
+    if fracture_count == normal_count:
+        return None, fracture_count / len(valid)
+    majority = "fracture" if fracture_count > normal_count else "normal"
+    return majority, max(fracture_count, normal_count) / len(valid)
 
 
 def _run_one_case(
@@ -314,6 +278,9 @@ def score_case(case: BenchmarkCase, result: PipelineResult, latency_ms: float) -
     top = evidence[0] if evidence else None
     expected = case.expected_diagnosis
     evidence_labels = [item.diagnosis for item in evidence]
+    evidence_majority, evidence_consensus = _majority_label(evidence_labels)
+    answer_label = _diagnosis_from_text(result.answer)
+    factuality = FACTUALITY_AUDITOR.audit(result.answer, evidence)
     first_correct_rank = next(
         (index for index, label in enumerate(evidence_labels, start=1) if label == expected),
         None,
@@ -329,7 +296,9 @@ def score_case(case: BenchmarkCase, result: PipelineResult, latency_ms: float) -
         "query_image_id": case.query_image_id,
         "expected_diagnosis": expected,
         "predicted_top_diagnosis": top.diagnosis if top else None,
-        "answer_predicted_diagnosis": _diagnosis_from_text(result.answer),
+        "evidence_majority_diagnosis": evidence_majority,
+        "evidence_label_consensus": round(evidence_consensus, 4),
+        "answer_predicted_diagnosis": answer_label,
         "retrieval_top1_label_accuracy": float(bool(top and top.diagnosis == expected)),
         "evidence_label_precision_at_4": (
             sum(label == expected for label in evidence_labels) / len(evidence_labels)
@@ -338,7 +307,13 @@ def score_case(case: BenchmarkCase, result: PipelineResult, latency_ms: float) -
         "evidence_label_recall_at_4": float(any(label == expected for label in evidence_labels)),
         "evidence_label_mrr": round(1.0 / first_correct_rank, 4) if first_correct_rank else 0.0,
         "evidence_label_ndcg_at_4": round(dcg / idcg, 4) if idcg else 0.0,
-        "answer_label_accuracy": float(_label_in_text(result.answer, expected)),
+        "answer_label_accuracy": float(answer_label == expected),
+        "answer_matches_top_evidence": float(bool(answer_label and top and answer_label == top.diagnosis)),
+        "answer_matches_evidence_majority": float(bool(answer_label and evidence_majority and answer_label == evidence_majority)),
+        "answer_factuality_score": factuality.score,
+        "answer_supported_claims": factuality.supported_claims,
+        "answer_unsupported_claims": factuality.unsupported_claims,
+        "answer_hallucination_warning": factuality.has_hallucination_warning,
         "used_retrieval": result.used_retrieval,
         "top_evidence_id": top.image_id if top else None,
         "top_score": top.rerank_score if top else 0.0,
@@ -374,17 +349,27 @@ def aggregate_case_scores(case_scores: list[dict[str, Any]]) -> dict[str, Any]:
         "evidence_label_recall_at_4",
         "evidence_label_mrr",
         "evidence_label_ndcg_at_4",
+        "evidence_label_consensus",
         "answer_label_accuracy",
+        "answer_matches_top_evidence",
+        "answer_matches_evidence_majority",
+        "answer_factuality_score",
         "latency_ms",
     )
     summary: dict[str, Any] = {"n_cases": len(case_scores)}
     for key in keys:
-        values = [float(item[key]) for item in case_scores]
+        values = [float(item.get(key, 0.0)) for item in case_scores]
         summary[key] = round(sum(values) / len(values), 4) if values else None
     fallback_values = [float(item.get("generator_fallback", False)) for item in case_scores]
     summary["generator_fallback_rate"] = (
         round(sum(fallback_values) / len(fallback_values), 4) if fallback_values else 0.0
     )
+    warning_values = [float(item.get("answer_hallucination_warning", False)) for item in case_scores]
+    summary["answer_hallucination_warning_rate"] = (
+        round(sum(warning_values) / len(warning_values), 4) if warning_values else 0.0
+    )
+    summary["answer_supported_claims"] = sum(int(item.get("answer_supported_claims", 0)) for item in case_scores)
+    summary["answer_unsupported_claims"] = sum(int(item.get("answer_unsupported_claims", 0)) for item in case_scores)
     summary.update(_classification_metrics(case_scores, "predicted_top_diagnosis", "retrieval"))
     summary.update(_classification_metrics(case_scores, "answer_predicted_diagnosis", "answer"))
     return summary
@@ -445,11 +430,15 @@ def protocol_metadata(cases: list[BenchmarkCase], systems: tuple[dict[str, Any],
     return {
         "benchmark_version": BENCHMARK_VERSION,
         "dataset": "FracAtlas",
+        "task": "binary fracture image-retrieval/classification proxy",
         "dataset_fingerprint": dataset_fingerprint(cases),
         "n_cases": len(cases),
         "cases_per_label": len(cases) // 2,
         "test_holdout": True,
         "test_ids_excluded_from_retrieval": True,
+        "external_text_corpus": False,
+        "official_paper_reproductions": False,
+        "vqa_explanation_ground_truth": False,
         "systems": [
             {key: value for key, value in system.items() if key != "description"}
             for system in systems

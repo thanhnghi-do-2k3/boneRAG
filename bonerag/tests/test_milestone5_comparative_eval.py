@@ -31,13 +31,17 @@ class TestMilestone5ComparativeEval(unittest.TestCase):
 
     def test_protocol_declares_holdout_and_systems(self) -> None:
         protocol = protocol_metadata(build_cases(SAMPLE_RECORDS, cases_per_label=2))
-        self.assertEqual(protocol["benchmark_version"], "bonerag-fracatlas-image-v2")
+        self.assertEqual(protocol["benchmark_version"], "bonerag-fracatlas-image-v3")
+        self.assertEqual(protocol["task"], "binary fracture image-retrieval/classification proxy")
         self.assertTrue(protocol["test_holdout"])
         self.assertTrue(protocol["test_ids_excluded_from_retrieval"])
-        self.assertEqual(len(SYSTEMS), 3)
-        self.assertEqual(len(benchmark_systems(include_controls=True)), 4)
-        self.assertEqual(len(benchmark_systems(include_literature_proxies=True)), 6)
-        self.assertEqual(len(benchmark_systems(include_controls=True, include_literature_proxies=True)), 7)
+        self.assertFalse(protocol["external_text_corpus"])
+        self.assertFalse(protocol["official_paper_reproductions"])
+        self.assertFalse(protocol["vqa_explanation_ground_truth"])
+        self.assertEqual(len(SYSTEMS), 2)
+        self.assertEqual(len(benchmark_systems(include_controls=True)), 3)
+        self.assertEqual(len(benchmark_systems(include_literature_proxies=True)), 2)
+        self.assertEqual(len(benchmark_systems(include_controls=True, include_literature_proxies=True)), 3)
 
     def test_aggregate_reports_binary_diagnostic_metrics(self) -> None:
         scores = [
@@ -50,7 +54,11 @@ class TestMilestone5ComparativeEval(unittest.TestCase):
                 "evidence_label_recall_at_4": 1,
                 "evidence_label_mrr": 1,
                 "evidence_label_ndcg_at_4": 1,
+                "evidence_label_consensus": 1,
                 "answer_label_accuracy": 1,
+                "answer_matches_top_evidence": 1,
+                "answer_matches_evidence_majority": 1,
+                "answer_factuality_score": 1,
                 "latency_ms": 10,
             },
             {
@@ -62,7 +70,11 @@ class TestMilestone5ComparativeEval(unittest.TestCase):
                 "evidence_label_recall_at_4": 1,
                 "evidence_label_mrr": 0.5,
                 "evidence_label_ndcg_at_4": 0.5,
+                "evidence_label_consensus": 0.5,
                 "answer_label_accuracy": 0,
+                "answer_matches_top_evidence": 0,
+                "answer_matches_evidence_majority": 0,
+                "answer_factuality_score": 0.5,
                 "latency_ms": 20,
             },
         ]
@@ -73,6 +85,7 @@ class TestMilestone5ComparativeEval(unittest.TestCase):
         self.assertEqual(summary["answer_unknown"], 1)
         self.assertEqual(summary["answer_sensitivity"], 1.0)
         self.assertEqual(summary["answer_specificity"], 0.0)
+        self.assertEqual(summary["answer_factuality_score"], 0.75)
 
     def test_metadata_loader_canonicalizes_fracatlas_ids_from_path_label(self) -> None:
         class FakeEncoder:

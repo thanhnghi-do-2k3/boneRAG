@@ -185,9 +185,10 @@ def run_benchmark_matrix(
 def print_markdown_report(results: list[dict[str, Any]]) -> None:
     print(
         "\n| System | Generator | Top-1 label | Retrieval F1 | Retrieval BalAcc | "
-        "Evidence P@4 | Recall@4 | MRR | nDCG@4 | Answer label | Answer F1 | Answer BalAcc | Latency | Cases |"
+        "Evidence P@4 | Recall@4 | MRR | nDCG@4 | Answer label | Answer F1 | "
+        "Answer BalAcc | Ans/Evidence | Factuality | Latency | Cases |"
     )
-    print("|---|---|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|")
+    print("|---|---|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|")
     for result in results:
         print(
             f"| {result['system_label']} | {result['generator']} | "
@@ -201,6 +202,8 @@ def print_markdown_report(results: list[dict[str, Any]]) -> None:
             f"{result['answer_label_accuracy']:.3f} | "
             f"{result['answer_f1']:.3f} | "
             f"{result['answer_balanced_accuracy']:.3f} | "
+            f"{result.get('answer_matches_evidence_majority', 0.0):.3f} | "
+            f"{result.get('answer_factuality_score', 0.0):.3f} | "
             f"{result['latency_ms']:.1f} ms | {result['n_cases']} |"
         )
 
@@ -218,7 +221,7 @@ def main() -> None:
     parser.add_argument(
         "--include-literature-proxies",
         action="store_true",
-        help="Also run MMed-RAG/FactMM-RAG/RULE-inspired exploratory proxy rows; not official reproductions.",
+        help="Deprecated compatibility flag. No paper proxy rows are run without official reproduction code.",
     )
     args = parser.parse_args()
 

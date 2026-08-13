@@ -2,11 +2,11 @@
 
 ## Kết luận ngắn
 
-Bộ benchmark FracAtlas hiện tại đủ để trả lời câu hỏi **BoneRAG có tốt hơn
-các ablation của chính nó hay không**. Nó chưa đủ để tuyên bố BoneRAG hơn
-MMed-RAG, RULE hoặc FactMM-RAG, vì các công trình đó dùng dataset, task,
-question split và metric khác nhau. Tên model lớn hơn cũng không làm phép so
-sánh trở nên công bằng nếu input và ground truth khác nhau.
+Bộ benchmark FracAtlas hiện tại chỉ đủ để trả lời câu hỏi **BoneRAG có tốt hơn
+Image-only retrieval trên binary fracture proxy của chính mình hay không**. Nó
+chưa đủ để tuyên bố BoneRAG hơn MMed-RAG, RULE hoặc FactMM-RAG, và cũng chưa
+phải benchmark VQA/explanation đầy đủ vì câu hỏi yes/no đang được tự sinh từ
+folder label.
 
 ## Những công trình nên đặt cạnh BoneRAG
 
@@ -21,18 +21,22 @@ sánh trở nên công bằng nếu input và ground truth khác nhau.
 
 ## Thang thực nghiệm đề xuất
 
-1. **Retrieval-only:** Image-only, Image+Metadata và BoneRAG trên cùng
-   FracAtlas test hold-out. Không dùng Text-only RAG nếu không có external
-   clinical text/document corpus thật. Dùng `Top-1 label`, `Evidence P@4`
-   và latency.
+1. **Retrieval-only/classification proxy:** Image-only và BoneRAG trên cùng
+   FracAtlas test hold-out. Không dùng Text-only hoặc Metadata RAG nếu không có
+   external clinical text/document corpus thật. Dùng `Top-1 label`, `Evidence
+   P@4`, sensitivity/specificity và latency.
 2. **Generator-controlled:** giữ nguyên encoder, index, evidence và prompt;
    thay Local Evidence Synthesizer bằng Qwen2.5-0.5B, Qwen2.5-1.5B hoặc
    SmolLM2. Báo thêm `generator_fallback_rate`, bắt buộc bằng 0 trước khi
    gọi đó là kết quả của model neural.
-3. **Dataset transfer:** thêm VQA-RAD, SLAKE, PathVQA hoặc OmniMedVQA với
+3. **Explanation/grounding:** nếu muốn đánh giá lời giải thích, cần reference
+   rationale/report hoặc yêu cầu model xuất localization rồi chấm với mask/box
+   FracAtlas. Metric `answer_factuality_score` hiện tại chỉ là heuristic bám
+   evidence, không phải clinical explanation score.
+4. **Dataset transfer:** thêm VQA-RAD, SLAKE, PathVQA hoặc OmniMedVQA với
    split công khai, câu hỏi và câu trả lời gốc. Không trộn câu hỏi của test
    vào index.
-4. **Method transfer:** chỉ sau khi có bước 1-3 mới thêm adaptive-k, factual
+5. **Method transfer:** chỉ sau khi có bước 1-4 mới thêm adaptive-k, factual
    reranker, hard-negative mining hoặc preference tuning. Mỗi thay đổi chạy
    lại cùng fingerprint và có ablation riêng.
 
@@ -40,9 +44,8 @@ sánh trở nên công bằng nếu input và ground truth khác nhau.
 
 Claim có thể bảo vệ được với protocol hiện tại:
 
-> Trên `bonerag-fracatlas-image-v2`, với cùng encoder, FAISS index, generator
-> và 32 ảnh test hold-out, BoneRAG đạt ... so với Image+Metadata RAG không
-> reranking.
+> Trên `bonerag-fracatlas-image-v3`, với cùng encoder, FAISS image index,
+> generator và 64 ảnh test hold-out, BoneRAG đạt ... so với Image-only RAG.
 
 Claim chưa được phép viết:
 
