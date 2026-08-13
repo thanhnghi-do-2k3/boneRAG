@@ -61,6 +61,13 @@ function PaperEvaluationPanel({ paperEvaluation }) {
   const paired = Array.isArray(paperEvaluation.paired_comparisons)
     ? paperEvaluation.paired_comparisons
     : [];
+  const discriminationAudit = paperEvaluation.discrimination_audit || {};
+  const auditWarnings = Array.isArray(discriminationAudit.warnings)
+    ? discriminationAudit.warnings
+    : [];
+  const duplicatePairs = Array.isArray(discriminationAudit.effective_duplicate_pairs)
+    ? discriminationAudit.effective_duplicate_pairs
+    : [];
   return (
     <div className="paper-eval-panel panel">
       <div className="benchmark-panel-heading">
@@ -81,6 +88,43 @@ function PaperEvaluationPanel({ paperEvaluation }) {
           {(claims.blocked || []).map((item) => <p key={item}>{item}</p>)}
         </div>
       </div>
+      <div className="benchmark-panel-heading paper-audit-heading">
+        <div><span className="eyebrow">Sanity audit</span><h3>Khả năng phân biệt system</h3></div>
+        <span>{duplicatePairs.length} duplicate pairs</span>
+      </div>
+      <div className="paper-audit-warnings">
+        {auditWarnings.length === 0 ? (
+          <p>Không phát hiện cặp system gần như trùng nhau trong run này.</p>
+        ) : (
+          auditWarnings.slice(0, 6).map((item) => <p key={item}>{item}</p>)
+        )}
+      </div>
+      {duplicatePairs.length > 0 && (
+        <div className="benchmark-table-wrap paper-paired-table">
+          <table className="benchmark-table">
+            <thead>
+              <tr>
+                <th>System A</th>
+                <th>System B</th>
+                <th>Decision agreement</th>
+                <th>Top-1 agreement</th>
+                <th>Top-4 overlap</th>
+              </tr>
+            </thead>
+            <tbody>
+              {duplicatePairs.slice(0, 8).map((item) => (
+                <tr key={`${item.left_system_key}-${item.right_system_key}`}>
+                  <td>{item.left_system_label}</td>
+                  <td>{item.right_system_label}</td>
+                  <td>{percent(item.decision_agreement)}</td>
+                  <td>{percent(item.top1_agreement)}</td>
+                  <td>{percent(item.top4_evidence_jaccard)}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      )}
       {paired.length > 0 && (
         <div className="benchmark-table-wrap paper-paired-table">
           <table className="benchmark-table">

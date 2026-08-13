@@ -46,6 +46,8 @@ Nội dung chính:
 - paired BoneRAG-vs-every-executed-baseline delta theo từng ảnh
 - exact McNemar/binomial test cho metric nhị phân
 - decision/retrieval/answer error breakdown TP/TN/FP/FN/unknown
+- sanity/discrimination audit: cảnh báo nếu nhiều system ra cùng prediction,
+  cùng top evidence, hoặc một metric có cùng giá trị cho toàn bộ matrix
 - claim guidance: được viết gì, nên cảnh báo gì, và claim nào bị chặn
 
 CLI:

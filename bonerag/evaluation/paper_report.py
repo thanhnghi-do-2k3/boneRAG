@@ -399,13 +399,176 @@ def _paired_comparisons_against_method(
     return comparisons
 
 
+def _row_by_case(rows: list[dict[str, Any]]) -> dict[str, dict[str, Any]]:
+    return {str(row.get("case_id")): row for row in rows if row.get("case_id") is not None}
+
+
+def _label(row: dict[str, Any], key: str) -> str:
+    value = row.get(key)
+    return str(value) if value not in {None, ""} else "unknown"
+
+
+def _label_counts(rows: list[dict[str, Any]], key: str) -> dict[str, int]:
+    counts: dict[str, int] = {}
+    for row in rows:
+        label = _label(row, key)
+        counts[label] = counts.get(label, 0) + 1
+    return counts
+
+
+def _evidence_jaccard(left: dict[str, Any], right: dict[str, Any]) -> float:
+    left_ids = set(left.get("evidence_ids") or [])
+    right_ids = set(right.get("evidence_ids") or [])
+    if not left_ids and not right_ids:
+        return 1.0
+    union = left_ids | right_ids
+    return len(left_ids & right_ids) / len(union) if union else 0.0
+
+
+def _mean_agreement(
+    shared_case_ids: list[str],
+    left_by_case: dict[str, dict[str, Any]],
+    right_by_case: dict[str, dict[str, Any]],
+    key: str,
+) -> float:
+    if not shared_case_ids:
+        return 0.0
+    same = sum(
+        _label(left_by_case[case_id], key) == _label(right_by_case[case_id], key)
+        for case_id in shared_case_ids
+    )
+    return same / len(shared_case_ids)
+
+
+def _system_discrimination_audit(
+    grouped: dict[str, list[dict[str, Any]]],
+    systems: list[dict[str, Any]],
+) -> dict[str, Any]:
+    system_keys = [
+        str(system.get("system_key", "")).strip()
+        for system in systems
+        if str(system.get("system_key", "")).strip() and grouped.get(str(system.get("system_key", "")).strip())
+    ]
+    labels_by_key = {
+        str(system.get("system_key", "")).strip(): system.get("system_label", system.get("system_key", "unknown"))
+        for system in systems
+    }
+    metric_keys = (
+        "decision_label_accuracy",
+        "decision_f1",
+        "decision_balanced_accuracy",
+        "retrieval_top1_label_accuracy",
+        "evidence_label_precision_at_4",
+        "answer_label_accuracy",
+    )
+    metric_diversity: dict[str, Any] = {}
+    for metric in metric_keys:
+        values: dict[str, float] = {}
+        for system in systems:
+            key = str(system.get("system_key", "")).strip()
+            if key in system_keys and metric in system:
+                values[key] = round(_as_float(system.get(metric)), 4)
+        unique_values = sorted(set(values.values()))
+        metric_diversity[metric] = {
+            "values": values,
+            "n_unique": len(unique_values),
+            "unique_values": unique_values,
+            "available": bool(values),
+            "discriminates": len(unique_values) > 1,
+        }
+
+    prediction_profiles = {}
+    for key in system_keys:
+        rows = grouped.get(key, [])
+        prediction_profiles[key] = {
+            "system_label": labels_by_key.get(key, key),
+            "n_cases": len(rows),
+            "decision_counts": _label_counts(rows, "decision_predicted_diagnosis"),
+            "top_evidence_counts": _label_counts(rows, "predicted_top_diagnosis"),
+            "answer_counts": _label_counts(rows, "answer_predicted_diagnosis"),
+            "decision_source_counts": _label_counts(rows, "decision_source"),
+        }
+
+    pairwise: list[dict[str, Any]] = []
+    effective_duplicates: list[dict[str, Any]] = []
+    for left_index, left_key in enumerate(system_keys):
+        for right_key in system_keys[left_index + 1:]:
+            left_by_case = _row_by_case(grouped[left_key])
+            right_by_case = _row_by_case(grouped[right_key])
+            shared_case_ids = sorted(set(left_by_case) & set(right_by_case))
+            top4_jaccard = (
+                sum(_evidence_jaccard(left_by_case[case_id], right_by_case[case_id]) for case_id in shared_case_ids)
+                / len(shared_case_ids)
+                if shared_case_ids
+                else 0.0
+            )
+            row = {
+                "left_system_key": left_key,
+                "left_system_label": labels_by_key.get(left_key, left_key),
+                "right_system_key": right_key,
+                "right_system_label": labels_by_key.get(right_key, right_key),
+                "n_shared_cases": len(shared_case_ids),
+                "decision_agreement": _round(_mean_agreement(shared_case_ids, left_by_case, right_by_case, "decision_predicted_diagnosis")),
+                "top1_agreement": _round(_mean_agreement(shared_case_ids, left_by_case, right_by_case, "predicted_top_diagnosis")),
+                "answer_agreement": _round(_mean_agreement(shared_case_ids, left_by_case, right_by_case, "answer_predicted_diagnosis")),
+                "top4_evidence_jaccard": _round(top4_jaccard),
+            }
+            pairwise.append(row)
+            if (
+                row["decision_agreement"] is not None
+                and row["decision_agreement"] >= 0.995
+                and row["top1_agreement"] is not None
+                and row["top1_agreement"] >= 0.995
+                and row["top4_evidence_jaccard"] is not None
+                and row["top4_evidence_jaccard"] >= 0.95
+            ):
+                effective_duplicates.append(row)
+
+    warnings: list[str] = []
+    for metric, item in metric_diversity.items():
+        if len(system_keys) > 1 and item["available"] and item["n_unique"] <= 1:
+            warnings.append(
+                f"{metric} is identical across all executed systems in this run; it cannot discriminate methods here."
+            )
+    for row in effective_duplicates:
+        warnings.append(
+            f"{row['left_system_label']} and {row['right_system_label']} are effectively identical on this run "
+            f"(decision agreement {row['decision_agreement']:.1%}, top-4 evidence overlap {row['top4_evidence_jaccard']:.1%})."
+        )
+    ours_pairs = [
+        row for row in pairwise
+        if PRIMARY_METHOD in {row["left_system_key"], row["right_system_key"]}
+        and row["decision_agreement"] is not None
+        and row["decision_agreement"] >= 0.995
+    ]
+    for row in ours_pairs:
+        other_label = (
+            row["right_system_label"]
+            if row["left_system_key"] == PRIMARY_METHOD
+            else row["left_system_label"]
+        )
+        warnings.append(
+            f"BoneRAG makes the same final decision as {other_label} on almost every shared case; do not claim a differentiated method from aggregate accuracy alone."
+        )
+
+    return {
+        "metric_diversity": metric_diversity,
+        "prediction_profiles": prediction_profiles,
+        "pairwise_agreement": pairwise,
+        "effective_duplicate_pairs": effective_duplicates,
+        "warnings": warnings,
+    }
+
+
 def _error_breakdown(rows: list[dict[str, Any]]) -> dict[str, Any]:
+    decision_counts = _diagnostic_counts(rows, "decision_predicted_diagnosis")
     retrieval_counts = _diagnostic_counts(rows, "predicted_top_diagnosis")
     answer_counts = _diagnostic_counts(rows, "answer_predicted_diagnosis")
     evidence_ties = sum(1 for row in rows if not row.get("evidence_majority_diagnosis"))
     unsupported_claims = sum(int(_as_float(row.get("answer_unsupported_claims", 0))) for row in rows)
     hallucination_warnings = sum(1 for row in rows if bool(row.get("answer_hallucination_warning")))
     return {
+        "decision": decision_counts,
         "retrieval": retrieval_counts,
         "answer": answer_counts,
         "evidence_majority_ties": evidence_ties,
@@ -418,6 +581,7 @@ def _allowed_and_blocked_claims(
     protocol: dict[str, Any],
     systems: list[dict[str, Any]],
     paired: list[dict[str, Any]],
+    discrimination_audit: dict[str, Any] | None = None,
 ) -> dict[str, list[str]]:
     n_cases = int(_as_float(protocol.get("n_cases", 0)))
     official_repro = bool(protocol.get("official_paper_reproductions"))
@@ -451,6 +615,8 @@ def _allowed_and_blocked_claims(
         warnings.append("Published paper methods are discussion baselines only in this run, not direct numerical comparators.")
     if not has_vqa_gt:
         warnings.append("Answer metrics are binary label proxies; use VQA-RAD/SLAKE/etc. for real VQA claims.")
+    if isinstance(discrimination_audit, dict):
+        warnings.extend(str(item) for item in discrimination_audit.get("warnings", []))
 
     top1 = next((
         item for item in paired
@@ -549,7 +715,8 @@ def build_paper_evaluation(run_record: dict[str, Any]) -> dict[str, Any]:
         })
 
     paired = _paired_comparisons_against_method(grouped, systems_by_key)
-    claims = _allowed_and_blocked_claims(protocol, systems, paired)
+    discrimination_audit = _system_discrimination_audit(grouped, systems)
+    claims = _allowed_and_blocked_claims(protocol, systems, paired, discrimination_audit)
     return {
         "schema_version": "paper-eval-v1",
         "run_id": run_record.get("run_id"),
@@ -564,6 +731,7 @@ def build_paper_evaluation(run_record: dict[str, Any]) -> dict[str, Any]:
         },
         "systems": system_cards,
         "paired_comparisons": paired,
+        "discrimination_audit": discrimination_audit,
         "claim_guidance": claims,
     }
 
@@ -654,6 +822,28 @@ def build_markdown_report(run_record: dict[str, Any]) -> str:
         )
     if not paper.get("paired_comparisons"):
         lines.append("| - | - | - | - | - | - | - | No paired comparison available |")
+
+    audit = paper.get("discrimination_audit", {})
+    if isinstance(audit, dict):
+        lines.extend(["", "## Discrimination Audit", ""])
+        audit_warnings = audit.get("warnings", [])
+        if audit_warnings:
+            lines.extend(f"- {text}" for text in audit_warnings)
+        else:
+            lines.append("- No effective duplicate system warning detected.")
+        duplicates = audit.get("effective_duplicate_pairs", [])
+        if duplicates:
+            lines.extend([
+                "",
+                "| System A | System B | Decision agreement | Top-1 agreement | Top-4 evidence overlap |",
+                "|---|---|---:|---:|---:|",
+            ])
+            for row in duplicates:
+                lines.append(
+                    f"| {row.get('left_system_label')} | {row.get('right_system_label')} | "
+                    f"{_percent(row.get('decision_agreement'))} | {_percent(row.get('top1_agreement'))} | "
+                    f"{_percent(row.get('top4_evidence_jaccard'))} |"
+                )
 
     claims = paper.get("claim_guidance", {})
     lines.extend(["", "## Claim Guidance", "", "Allowed:"])
@@ -749,6 +939,10 @@ def build_case_audit_csv(run_record: dict[str, Any]) -> str:
         "query_image_id",
         "system_key",
         "expected_diagnosis",
+        "decision_predicted_diagnosis",
+        "decision_source",
+        "decision_confidence",
+        "decision_label_accuracy",
         "predicted_top_diagnosis",
         "evidence_majority_diagnosis",
         "answer_predicted_diagnosis",

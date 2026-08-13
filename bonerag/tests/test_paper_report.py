@@ -82,6 +82,7 @@ class TestPaperReport(unittest.TestCase):
         paper = build_paper_evaluation(self._sample_run())
         self.assertEqual(paper["schema_version"], "paper-eval-v1")
         self.assertEqual(len(paper["systems"]), 2)
+        self.assertIn("discrimination_audit", paper)
         top1_metric = paper["systems"][1]["metrics"]["retrieval_top1_label_accuracy"]
         self.assertEqual(top1_metric["successes"], 4)
         self.assertIsNotNone(top1_metric["ci95"])
@@ -93,6 +94,24 @@ class TestPaperReport(unittest.TestCase):
         self.assertEqual(top1_pair["mcnemar_b_method_correct_only"], 2)
         self.assertEqual(top1_pair["mcnemar_c_baseline_correct_only"], 0)
         self.assertIn("MMed-RAG", " ".join(paper["claim_guidance"]["blocked"]))
+
+    def test_flags_effectively_duplicate_systems(self) -> None:
+        run = self._sample_run()
+        duplicate_cases = []
+        for row in run["cases"]:
+            if row["system_key"] == "image_rag":
+                base = dict(row)
+                base["evidence_ids"] = ["same-a", "same-b"]
+                clone = dict(base)
+                clone["system_key"] = "bonerag"
+                clone["system_label"] = "BoneRAG (ours)"
+                duplicate_cases.append(base)
+                duplicate_cases.append(clone)
+        run["cases"] = duplicate_cases
+        paper = build_paper_evaluation(run)
+        audit = paper["discrimination_audit"]
+        self.assertGreaterEqual(len(audit["effective_duplicate_pairs"]), 1)
+        self.assertIn("effectively identical", " ".join(audit["warnings"]))
 
     def test_artifact_bundle_contains_paper_outputs(self) -> None:
         run = self._sample_run()

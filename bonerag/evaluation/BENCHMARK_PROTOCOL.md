@@ -110,9 +110,12 @@ as JSON.
 Each completed web/CLI run also builds `paper_evaluation`:
 
 - 95% confidence intervals for system metrics.
-- Paired BoneRAG-vs-Image-only deltas over the same case IDs.
+- Paired BoneRAG-vs-every-executed-baseline deltas over the same case IDs.
 - Exact McNemar/binomial tests for binary paired metrics.
 - Error breakdowns for retrieval and answer labels.
+- Discrimination audit: per-metric unique-value counts, pairwise decision
+  agreement, top-1 agreement, top-k evidence overlap, and warnings when systems
+  are effectively identical or a metric cannot distinguish methods in that run.
 - Claim guidance that separates allowed internal-ablation claims from blocked
   published-method or clinical-explanation claims.
 

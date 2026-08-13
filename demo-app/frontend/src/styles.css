@@ -765,6 +765,29 @@ textarea::placeholder {
   line-height: 1.5;
 }
 
+.paper-audit-heading {
+  margin-top: 1rem;
+  padding-top: 1rem;
+  border-top: 1px solid var(--line);
+}
+
+.paper-audit-warnings {
+  display: grid;
+  gap: 8px;
+  margin-top: 0.75rem;
+}
+
+.paper-audit-warnings p {
+  margin: 0;
+  padding: 10px 12px;
+  border: 1px solid color-mix(in srgb, var(--accent) 24%, var(--line));
+  border-radius: 10px;
+  background: rgba(20, 184, 166, 0.08);
+  color: #d4d4d8;
+  font-size: 0.78rem;
+  line-height: 1.5;
+}
+
 .benchmark-table-wrap.paper-paired-table {
   margin-top: 1rem;
   margin-bottom: 0;
