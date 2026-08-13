@@ -601,6 +601,7 @@ class BoneRAGHandler(BaseHTTPRequestHandler):
             run_system_case,
             aggregate_case_scores,
         )
+        from evaluation.paper_report import build_paper_evaluation
 
         config = {
             "encoder": encoder_name,
@@ -694,6 +695,7 @@ class BoneRAGHandler(BaseHTTPRequestHandler):
             "systems": system_summaries,
             "cases": all_results,
         }
+        run_record["paper_evaluation"] = build_paper_evaluation(run_record)
         run_path = benchmark_runs_path()
         write_error = None
         try:
@@ -708,7 +710,12 @@ class BoneRAGHandler(BaseHTTPRequestHandler):
             "run_id": run_record["run_id"],
             "summary": {
                 **protocol,
+                "run_id": run_record["run_id"],
+                "created_at": run_record["created_at"],
+                "encoder": encoder_name,
+                "generator": generator_name,
                 "systems": system_summaries,
+                "paper_evaluation": run_record["paper_evaluation"],
                 "total_evaluated": len(all_results),
                 "saved_to": str(run_path) if write_error is None else None,
                 "save_error": write_error,
@@ -941,6 +948,27 @@ class BoneRAGHandler(BaseHTTPRequestHandler):
                 return
             analysis, source = _gemini_benchmark_analysis(summary, cases if isinstance(cases, list) else [])
             self._send_json({"ok": True, "source": source, "analysis": analysis})
+            return
+
+        if route == "/api/export-benchmark-artifacts":
+            from evaluation.paper_report import build_artifact_bundle, build_paper_evaluation
+
+            summary = payload.get("summary", payload.get("protocol", {}))
+            cases = payload.get("cases", [])
+            if not isinstance(summary, dict):
+                self._send_json({"error": "summary is required"}, status=400)
+                return
+            run_record = {
+                "run_id": payload.get("run_id") or summary.get("run_id"),
+                "created_at": payload.get("created_at"),
+                "protocol": summary,
+                "encoder": payload.get("encoder") or summary.get("encoder"),
+                "generator": payload.get("generator") or summary.get("generator"),
+                "systems": summary.get("systems", []),
+                "cases": cases if isinstance(cases, list) else [],
+            }
+            run_record["paper_evaluation"] = build_paper_evaluation(run_record)
+            self._send_json({"ok": True, "artifacts": build_artifact_bundle(run_record)})
             return
 
         self._send_json({"error": "not found"}, status=404)

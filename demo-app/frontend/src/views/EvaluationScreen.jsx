@@ -1,9 +1,19 @@
 import React, { useEffect, useRef, useState } from 'react';
 import { ScreenHeader } from '../design-system/ScreenHeader';
-import { analyzeBenchmarkRun, fetchBenchmarkRuns, openBenchmarkStream } from '../services/boneragApi';
+import {
+  analyzeBenchmarkRun,
+  exportBenchmarkArtifacts,
+  fetchBenchmarkRuns,
+  openBenchmarkStream,
+} from '../services/boneragApi';
 
 const percent = (value) => (Number.isFinite(Number(value)) ? `${(Number(value) * 100).toFixed(1)}%` : '—');
 const decimal = (value) => (Number.isFinite(Number(value)) ? Number(value).toFixed(3) : '—');
+const ciText = (ci, asPercent = true) => (
+  Array.isArray(ci) && ci.length === 2
+    ? `[${asPercent ? percent(ci[0]) : decimal(ci[0])}, ${asPercent ? percent(ci[1]) : decimal(ci[1])}]`
+    : '—'
+);
 
 const chartMetrics = [
   ['retrieval_top1_label_accuracy', 'Top-1'],
@@ -41,6 +51,69 @@ function BenchmarkChart({ systems }) {
           </div>
         ))}
       </div>
+    </div>
+  );
+}
+
+function PaperEvaluationPanel({ paperEvaluation }) {
+  if (!paperEvaluation) return null;
+  const claims = paperEvaluation.claim_guidance || {};
+  const paired = Array.isArray(paperEvaluation.paired_comparisons)
+    ? paperEvaluation.paired_comparisons
+    : [];
+  return (
+    <div className="paper-eval-panel panel">
+      <div className="benchmark-panel-heading">
+        <div><span className="eyebrow">Paper readiness</span><h3>Đánh giá có thể viết vào paper</h3></div>
+        <span>{paperEvaluation.schema_version || 'paper-eval'}</span>
+      </div>
+      <div className="paper-claim-grid">
+        <div>
+          <strong>Allowed</strong>
+          {(claims.allowed || []).map((item) => <p key={item}>{item}</p>)}
+        </div>
+        <div>
+          <strong>Warnings</strong>
+          {(claims.warnings || []).map((item) => <p key={item}>{item}</p>)}
+        </div>
+        <div>
+          <strong>Blocked</strong>
+          {(claims.blocked || []).map((item) => <p key={item}>{item}</p>)}
+        </div>
+      </div>
+      {paired.length > 0 && (
+        <div className="benchmark-table-wrap paper-paired-table">
+          <table className="benchmark-table">
+            <thead>
+              <tr>
+                <th>Metric</th>
+                <th>Image-only</th>
+                <th>BoneRAG</th>
+                <th>Delta</th>
+                <th>95% CI</th>
+                <th>McNemar p</th>
+                <th>Direction</th>
+              </tr>
+            </thead>
+            <tbody>
+              {paired.map((item) => {
+                const isLatency = item.metric === 'latency_ms';
+                return (
+                  <tr key={item.metric}>
+                    <td><strong>{item.metric}</strong><small>{item.n_paired_cases} paired cases</small></td>
+                    <td>{isLatency ? `${decimal(item.baseline_mean)} ms` : percent(item.baseline_mean)}</td>
+                    <td>{isLatency ? `${decimal(item.method_mean)} ms` : percent(item.method_mean)}</td>
+                    <td>{isLatency ? `${decimal(item.delta)} ms` : percent(item.delta)}</td>
+                    <td>{ciText(item.delta_ci95, !isLatency)}</td>
+                    <td>{item.mcnemar_exact_p == null ? '—' : decimal(item.mcnemar_exact_p)}</td>
+                    <td>{item.claim_direction}</td>
+                  </tr>
+                );
+              })}
+            </tbody>
+          </table>
+        </div>
+      )}
     </div>
   );
 }
@@ -160,7 +233,36 @@ export function EvaluationScreen() {
     }
   };
 
+  const downloadTextArtifact = (filename, content, type = 'text/plain') => {
+    const blob = new Blob([content], { type });
+    const url = URL.createObjectURL(blob);
+    const anchor = document.createElement('a');
+    anchor.href = url;
+    anchor.download = filename;
+    anchor.click();
+    URL.revokeObjectURL(url);
+  };
+
+  const handleExportArtifact = async (artifactKey, filename, type) => {
+    if (!completedSummary) return;
+    try {
+      const result = await exportBenchmarkArtifacts({
+        summary: completedSummary,
+        cases: evaluatedCases,
+        encoder,
+        generator,
+      });
+      const content = result?.artifacts?.[artifactKey];
+      if (content) {
+        downloadTextArtifact(filename, content, type);
+      }
+    } catch (err) {
+      setLogs((prev) => [...prev, `[EXPORT ERROR] ${err?.message || 'Không xuất được artifact.'}`]);
+    }
+  };
+
   const systems = completedSummary?.systems || [];
+  const paperEvaluation = completedSummary?.paper_evaluation;
 
   return (
     <section className="screen">
@@ -265,10 +367,20 @@ export function EvaluationScreen() {
               <button className="secondary-button" onClick={handleAnalyze} disabled={isAnalyzing}>
                 {isAnalyzing ? 'Đang nhận xét...' : 'Nhận xét bằng Gemini'}
               </button>
+              <button className="secondary-button" onClick={() => handleExportArtifact('markdown_report', 'bonerag-paper-evaluation.md', 'text/markdown')}>
+                Tải report paper
+              </button>
+              <button className="secondary-button" onClick={() => handleExportArtifact('paired_comparisons_csv', 'bonerag-paired-comparisons.csv', 'text/csv')}>
+                Tải CSV paired
+              </button>
+              <button className="secondary-button" onClick={() => handleExportArtifact('summary_svg', 'bonerag-paper-chart.svg', 'image/svg+xml')}>
+                Tải SVG chart
+              </button>
               <button className="secondary-button" onClick={downloadRun}>Tải JSON kết quả</button>
             </div>
           </div>
           <BenchmarkChart systems={systems} />
+          <PaperEvaluationPanel paperEvaluation={paperEvaluation} />
           {analysis && (
             <div className="benchmark-analysis panel">
               <div className="benchmark-panel-heading">

@@ -661,7 +661,8 @@ textarea::placeholder {
 }
 
 .benchmark-chart,
-.benchmark-analysis {
+.benchmark-analysis,
+.paper-eval-panel {
   margin-bottom: 1.5rem;
   padding: 1rem;
   border-radius: 16px;
@@ -734,6 +735,42 @@ textarea::placeholder {
   color: #d4d4d8;
   font: inherit;
   line-height: 1.65;
+}
+
+.paper-claim-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
+  gap: 12px;
+  margin-top: 1rem;
+}
+
+.paper-claim-grid > div {
+  padding: 12px;
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  background: rgba(255, 255, 255, 0.025);
+}
+
+.paper-claim-grid strong {
+  display: block;
+  margin-bottom: 8px;
+  color: var(--ink);
+  font-size: 0.82rem;
+}
+
+.paper-claim-grid p {
+  margin: 0 0 8px;
+  color: var(--muted);
+  font-size: 0.78rem;
+  line-height: 1.5;
+}
+
+.benchmark-table-wrap.paper-paired-table {
+  margin-top: 1rem;
+  margin-bottom: 0;
+  padding: 0;
+  border: 1px solid var(--line);
+  border-radius: 12px;
 }
 
 .benchmark-table-wrap {

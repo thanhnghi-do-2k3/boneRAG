@@ -28,6 +28,11 @@ from bonerag.evaluation.benchmark import (
     protocol_metadata,
     run_system_case,
 )
+from bonerag.evaluation.paper_report import (
+    build_markdown_report,
+    build_paper_evaluation,
+    write_artifact_bundle,
+)
 from bonerag.main_algo.encoder import get_multimodal_encoder
 from bonerag.main_algo.generator import get_generator
 from bonerag.main_algo.pipeline import BoneRAGPipeline
@@ -97,6 +102,7 @@ def _run_generator_matrix(
     protocol = protocol_metadata(cases, systems=systems)
     test_query_ids = {case.query_image_id for case in cases}
     system_results: list[dict[str, Any]] = []
+    all_case_scores: list[dict[str, Any]] = []
 
     print(
         f"[benchmark] {protocol['benchmark_version']} | "
@@ -109,7 +115,14 @@ def _run_generator_matrix(
         print(f"[benchmark] system={system['label']}")
         for index, case in enumerate(cases, start=1):
             result = run_system_case(pipeline, case, system, test_query_ids=test_query_ids)
+            result.update({
+                "case_index": index,
+                "total_cases": len(cases),
+                "question": case.question,
+                "system_description": system["description"],
+            })
             case_scores.append(result)
+            all_case_scores.append(result)
             print(
                 f"  [{index:02d}/{len(cases):02d}] {case.case_id} "
                 f"expected={result['expected_diagnosis']} "
@@ -134,14 +147,16 @@ def _run_generator_matrix(
         "encoder": encoder_name,
         "generator": generator_name,
         "systems": system_results,
+        "cases": all_case_scores,
     }
+    run_record["paper_evaluation"] = build_paper_evaluation(run_record)
     run_path = benchmark_runs_path()
     with run_path.open("a", encoding="utf-8") as handle:
         handle.write(json.dumps(run_record, ensure_ascii=False) + "\n")
     return run_record
 
 
-def run_benchmark_matrix(
+def run_benchmark_records(
     generator_mode: str = "synth",
     max_cases: int | None = None,
     encoder_name: str = "biomedclip",
@@ -169,6 +184,10 @@ def run_benchmark_matrix(
         )
         for mode in modes
     ]
+    return runs
+
+
+def flatten_benchmark_records(runs: list[dict[str, Any]]) -> list[dict[str, Any]]:
     return [
         {
             "run_id": run["run_id"],
@@ -180,6 +199,25 @@ def run_benchmark_matrix(
         for run in runs
         for summary in run["systems"]
     ]
+
+
+def run_benchmark_matrix(
+    generator_mode: str = "synth",
+    max_cases: int | None = None,
+    encoder_name: str = "biomedclip",
+    include_controls: bool = False,
+    include_literature_proxies: bool = False,
+) -> list[dict[str, Any]]:
+    """Run the benchmark and return the flattened system summary table."""
+    return flatten_benchmark_records(
+        run_benchmark_records(
+            generator_mode=generator_mode,
+            max_cases=max_cases,
+            encoder_name=encoder_name,
+            include_controls=include_controls,
+            include_literature_proxies=include_literature_proxies,
+        )
+    )
 
 
 def print_markdown_report(results: list[dict[str, Any]]) -> None:
@@ -223,10 +261,20 @@ def main() -> None:
         action="store_true",
         help="Deprecated compatibility flag. No paper proxy rows are run without official reproduction code.",
     )
+    parser.add_argument(
+        "--paper-report",
+        action="store_true",
+        help="Print a paper-ready Markdown evaluation with CI, paired deltas, and claim guidance.",
+    )
+    parser.add_argument(
+        "--export-paper-dir",
+        default=None,
+        help="Optional directory for Markdown/CSV/SVG paper evaluation artifacts.",
+    )
     args = parser.parse_args()
 
     try:
-        results = run_benchmark_matrix(
+        runs = run_benchmark_records(
             generator_mode=args.generator,
             max_cases=args.cases,
             encoder_name=args.encoder,
@@ -236,7 +284,17 @@ def main() -> None:
     except (FileNotFoundError, RuntimeError, ValueError, ModuleNotFoundError, OSError) as exc:
         print(f"[benchmark] ERROR: {exc}", file=sys.stderr)
         raise SystemExit(2) from exc
+    results = flatten_benchmark_records(runs)
     print_markdown_report(results)
+    if args.paper_report:
+        for run in runs:
+            print()
+            print(build_markdown_report(run))
+    if args.export_paper_dir:
+        export_root = Path(args.export_paper_dir)
+        for run in runs:
+            written = write_artifact_bundle(run, export_root / str(run["run_id"]))
+            print(f"[benchmark] paper artifacts: {written}")
 
 
 if __name__ == "__main__":

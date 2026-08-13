@@ -204,6 +204,14 @@ export function analyzeBenchmarkRun(payload) {
   }).then((response) => response.json());
 }
 
+export function exportBenchmarkArtifacts(payload) {
+  return apiFetch('/api/export-benchmark-artifacts', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', ...DEFAULT_HEADERS },
+    body: JSON.stringify(payload),
+  }).then((response) => response.json());
+}
+
 export function fetchModelConfigs() {
   return apiFetch('/api/model-configs').then((r) => r.json());
 }

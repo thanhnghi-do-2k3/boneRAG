@@ -89,6 +89,15 @@ The web result shows per-system aggregates and every case. The backend appends
 the complete run to `benchmark_runs.jsonl`; the UI can export the current run
 as JSON.
 
+Each completed web/CLI run also builds `paper_evaluation`:
+
+- 95% confidence intervals for system metrics.
+- Paired BoneRAG-vs-Image-only deltas over the same case IDs.
+- Exact McNemar/binomial tests for binary paired metrics.
+- Error breakdowns for retrieval and answer labels.
+- Claim guidance that separates allowed internal-ablation claims from blocked
+  published-method or clinical-explanation claims.
+
 ## What it does not evaluate
 
 This protocol does not evaluate free-form clinical explanations against a
@@ -138,6 +147,21 @@ Use a larger balanced case count to check stability:
 ```bash
 python3 -m bonerag.evaluation.run_benchmark \
   --encoder biomedclip --generator synth --cases 128
+```
+
+Print a paper-ready report after the run:
+
+```bash
+python3 -m bonerag.evaluation.run_benchmark \
+  --encoder biomedclip --generator synth --cases 128 --paper-report
+```
+
+Export Markdown/CSV/SVG artifacts:
+
+```bash
+python3 -m bonerag.evaluation.run_benchmark \
+  --encoder biomedclip --generator synth --cases 128 \
+  --export-paper-dir /content/drive/MyDrive/BoneRAG_Data/paper_reports
 ```
 
 The deprecated literature-proxy flag is accepted for backward compatibility but
