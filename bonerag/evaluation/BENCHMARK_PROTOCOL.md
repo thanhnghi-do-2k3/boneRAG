@@ -44,6 +44,10 @@ No paper-inspired proxy rows are executed. A row named after MMed-RAG, RULE, or
 FactMM-RAG may only be added after implementing or running the actual method on
 the same dataset, split, and metrics.
 
+Related datasets, external tasks, and paper methods are tracked in
+`COMPARISON_GUIDE.md`. They are used to plan future experiments, not to create
+benchmark rows by name alone.
+
 ## Metrics
 
 - `retrieval_top1_label_accuracy`: top retrieved evidence has the true folder

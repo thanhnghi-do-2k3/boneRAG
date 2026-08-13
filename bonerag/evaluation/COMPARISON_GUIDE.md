@@ -8,16 +8,44 @@ chưa đủ để tuyên bố BoneRAG hơn MMed-RAG, RULE hoặc FactMM-RAG, và
 phải benchmark VQA/explanation đầy đủ vì câu hỏi yes/no đang được tự sinh từ
 folder label.
 
-## Những công trình nên đặt cạnh BoneRAG
+## Ma trận bài toán liên quan
 
-| Công trình | Bài toán chính | Học được gì | Có thể so trực tiếp với FracAtlas v1? |
+| Nhóm | Dataset / benchmark | Bài toán | Metric chính | Đặt cạnh BoneRAG thế nào |
+|---|---|---|---|---|
+| MSK fracture | [FracAtlas](https://pmc.ncbi.nlm.nih.gov/articles/PMC10404222/) / [Figshare](https://figshare.com/articles/dataset/The_dataset/22363012) | Classification, localization, segmentation gãy xương | Accuracy/F1 cho label; mAP/IoU cho box/mask | Cùng domain nhất. Hiện BoneRAG mới dùng binary label; bước hợp lệ tiếp theo là thêm localization/mask grounding. |
+| MSK abnormality | [MURA](https://stanfordmlgroup.github.io/competitions/mura/) | Normal/abnormal trên upper-extremity X-ray studies | Cohen's kappa; hidden test leaderboard | Không so số trực tiếp với FracAtlas. Dùng làm external transfer nếu implement loader và study-level evaluation. |
+| Pediatric wrist trauma | [GRAZPEDWRI-DX](https://pmc.ncbi.nlm.nih.gov/articles/PMC9122976/) | Wrist fracture/object detection với tags, boxes, polygons | Detection F1/mAP, tag accuracy | Rất phù hợp để kiểm tra BoneRAG có học được localization/evidence không, nhưng cần dataset loader riêng. |
+| Hand radiograph regression | [RSNA Pediatric Bone Age](https://www.rsna.org/artificial-intelligence/ai-image-challenge/rsna-pediatric-bone-age-challenge-2017) | Dự đoán tuổi xương từ hand X-ray | Mean absolute distance/error theo tháng | Liên quan xương nhưng không phải fracture/RAG; chỉ dùng cho discussion hoặc transfer encoder. |
+| Radiology MedVQA | [VQA-RAD](https://www.nature.com/articles/sdata2018251) | Clinician-generated QA trên ảnh radiology | Accuracy cho closed/open answer; BLEU/semantic variants tùy paper | Benchmark hợp lệ nếu muốn nói VQA thật, vì có câu hỏi và reference answer. |
+| Radiology MedVQA + KG | [SLAKE](https://www.med-vqa.com/slake/) | English/Chinese medical VQA, có semantic labels, masks, KG | Open/closed accuracy, reasoning/category breakdown | Phù hợp để test RAG/knowledge retrieval; cần loader và split chính thức. |
+| Pathology VQA | [PathVQA](https://aclanthology.org/2021.acl-short.90/) | Open/closed QA trên pathology images | Accuracy/BLEU theo open/closed | Liên quan explanation/reasoning, nhưng khác modality; dùng để kiểm tra general Medical VQA. |
+| Large-scale MedVQA | [PMC-VQA](https://pmc.ncbi.nlm.nih.gov/articles/PMC11663219/) | Large-scale generated medical VQA từ PMC figures | MCQ accuracy, open-ended ACC/BLEU | Có ích để pretrain/evaluate VQA quy mô lớn; không thay thế FracAtlas fracture benchmark. |
+| Challenge VQA | [ImageCLEF VQA-Med 2019](https://www.imageclef.org/2019/medical/vqa/) | Radiology QA theo modality/plane/organ/abnormality | Challenge accuracy/BLEU/WBSS tùy year | Dùng cho benchmark VQA chuẩn nếu muốn có câu hỏi y khoa đa dạng. |
+| Explanation/rationale | [MedThink / R-RAD, R-SLAKE, R-Path](https://aclanthology.org/2025.findings-naacl.415/) | VQA kèm rationale trung gian | Answer accuracy + rationale/explanation metric | Hướng đúng nếu muốn đánh giá giải thích, không chỉ đúng/sai label. |
+
+## Phương pháp liên quan nên thảo luận
+
+| Phương pháp | Bài toán gốc | Thành phần đáng học | Có được thêm vào benchmark hiện tại không? |
 |---|---|---|---|
-| [MIRAGE / MedRAG](https://arxiv.org/abs/2402.13178) | Medical QA với nhiều corpus/retriever/backbone | Chuẩn hóa matrix retriever-corpus-generator và đánh giá factuality | Không trực tiếp; có thể học protocol và chạy thêm trên medical QA |
-| [MMed-RAG](https://arxiv.org/abs/2410.13085) | Multimodal medical RAG, adaptive context, preference tuning | So sánh context selection và generator grounding | Không, nếu không chạy cùng dataset/task |
-| [RULE](https://arxiv.org/abs/2407.05131) | Reliability/factuality cho Med-LVLM | Chọn số context thích nghi và preference data | Không, nhưng có thể mượn adaptive-k và factuality metric |
-| [FactMM-RAG](https://arxiv.org/abs/2407.15268) | Fact-aware multimodal report generation | Rerank theo quan hệ factual thay vì similarity hình thức | Không, nhưng có thể mượn fact-aware reranker |
-| [VisRAG](https://arxiv.org/abs/2410.10594) | Visual document RAG | Encode trực tiếp trang ảnh thay cho OCR-only | Không phải X-quang, nhưng phù hợp để học image-first retrieval |
-| [FracAtlas](https://pmc.ncbi.nlm.nih.gov/articles/PMC10404222/) | Localization/segmentation gãy xương | Dataset và baseline task về xương | Dataset phù hợp; metric detection/segmentation khác VQA |
+| [MIRAGE / MedRAG](https://arxiv.org/abs/2402.13178) | Text medical QA với nhiều corpus/retriever/backbone | Matrix hóa corpus, retriever, generator; question-only retrieval; báo nhiều dataset | Không. Đây là text QA, nên chỉ đưa vào Related Work/protocol design. |
+| [MMed-RAG](https://arxiv.org/abs/2410.13085) | Multimodal medical VQA/report generation | Domain-aware retrieval, adaptive context selection, RAG preference tuning | Chỉ thêm khi chạy official code hoặc implement đủ ba thành phần trên cùng split. |
+| [RULE](https://arxiv.org/abs/2407.05131) | Factuality cho Med-LVLM trong VQA/report generation | Calibrated context count, preference data chống over-reliance vào retrieval | Không thêm row proxy. Có thể implement thành ablation `adaptive_k` thật sau này. |
+| [FactMM-RAG](https://arxiv.org/abs/2407.15268) | Radiology report generation trên MIMIC-CXR/CheXpert | RadGraph/CheXbert-guided factual retriever, factual report-pair mining | Không so trực tiếp với FracAtlas; chỉ hợp lệ nếu có report corpus và RadGraph-style labels. |
+| [MR-RAG](https://openaccess.thecvf.com/content/CVPR2026/html/Li_MR-RAG_Multimodal_Relevance-Aware_Retrieval-Augmented_Generation_for_Medical_Visual_Question_Answering_CVPR_2026_paper.html) | Medical VQA multimodal RAG | Cooperative retrieval bằng intra/cross-modal relevance và relevance-aware generation | Có thể học thiết kế retrieval, nhưng cần implement module thật và test trên MedVQA datasets. |
+| [MKGF](https://github.com/ehnal/MKGF) | MedVQA với multimodal knowledge graph | Question-knowledge relations, KG retrieval, BiomedCLIP/BGE retriever | Không phù hợp FracAtlas hiện tại vì chưa có KG; phù hợp cho SLAKE/VQA-RAD extension. |
+| [Path-RAG](https://proceedings.mlr.press/v259/naeem25a.html) | Open-ended pathology VQA | Region/key-patch retrieval có domain guidance | Ý tưởng tốt cho fracture box/mask retrieval, nhưng khác modality và cần localization implementation. |
+| [VisRAG](https://arxiv.org/abs/2410.10594) | RAG trên multimodal documents | Embed trang/tài liệu như ảnh thay vì parse text trước | Chỉ là inspiration cho image-first retrieval, không phải medical X-ray baseline. |
+
+## Baseline thật nên thêm vào trước khi nói tiến bộ
+
+| Baseline | Vì sao cần | Có thể chạy trên FracAtlas hiện tại? |
+|---|---|---|
+| kNN majority vote trên image embedding | Kiểm tra RAG có hơn một classifier cực đơn giản không | Có. Dùng cùng FAISS top-k, vote fracture/normal, không gọi generator. |
+| Zero-shot BiomedCLIP prompt classifier | Kiểm tra encoder image-text có tự phân biệt fracture/normal bằng prompt không | Có, nếu encoder hỗ trợ text/image cosine ổn định. |
+| Linear probe / logistic regression trên frozen embeddings | Baseline supervised nhẹ, thường mạnh hơn retrieval label proxy | Có, cần train/val/test split patient/image-level rõ ràng. |
+| Supervised ViT/DenseNet/ResNet classifier | Baseline classification chuẩn cho paper | Có, nhưng cần training pipeline và confidence interval. |
+| YOLO/Mask-RCNN/segmentation baseline | Đánh giá localization/explanation bằng box/mask thay vì lời giải thích tự do | Có, vì FracAtlas có annotations; cần mAP/IoU metric. |
+| Official MURA/GRAZPEDWRI-DX transfer | Kiểm tra generalization ngoài FracAtlas | Có sau khi thêm dataset loaders và protocol riêng. |
 
 ## Thang thực nghiệm đề xuất
 
@@ -39,6 +67,9 @@ folder label.
 5. **Method transfer:** chỉ sau khi có bước 1-4 mới thêm adaptive-k, factual
    reranker, hard-negative mining hoặc preference tuning. Mỗi thay đổi chạy
    lại cùng fingerprint và có ablation riêng.
+6. **Cross-dataset validation:** nếu FracAtlas có cải thiện, chạy lại trên
+   MURA hoặc GRAZPEDWRI-DX. Nếu không transfer được thì chỉ claim trong phạm vi
+   FracAtlas.
 
 ## Cách viết claim trong báo cáo
 
