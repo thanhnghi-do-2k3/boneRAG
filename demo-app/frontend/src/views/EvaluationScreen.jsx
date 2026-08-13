@@ -16,12 +16,12 @@ const ciText = (ci, asPercent = true) => (
 );
 
 const chartMetrics = [
-  ['retrieval_top1_label_accuracy', 'Top-1'],
-  ['evidence_label_precision_at_4', 'P@4'],
+  ['decision_label_accuracy', 'Decision'],
+  ['decision_f1', 'Decision F1'],
+  ['decision_balanced_accuracy', 'Decision BalAcc'],
+  ['retrieval_top1_label_accuracy', 'Retrieval Top-1'],
+  ['evidence_label_precision_at_4', 'Evidence P@4'],
   ['evidence_label_mrr', 'MRR'],
-  ['evidence_label_ndcg_at_4', 'nDCG@4'],
-  ['answer_label_accuracy', 'Answer'],
-  ['answer_factuality_score', 'Faithful'],
 ];
 
 function BenchmarkChart({ systems }) {
@@ -165,7 +165,8 @@ export function EvaluationScreen() {
         } else if (data.type === 'bench-case') {
           const fallbackNote = data.generator_fallback ? ' | GENERATOR_FALLBACK' : '';
           const answerNote = data.answer_predicted_diagnosis ? ` | answer=${data.answer_predicted_diagnosis}` : ' | answer=unknown';
-          const logLine = `[${data.system_label}] ${data.case_id} | expected=${data.expected_diagnosis} | top=${data.predicted_top_diagnosis || 'none'}${answerNote} | retrieval=${percent(data.retrieval_top1_label_accuracy)} | latency=${data.latency_ms}ms${fallbackNote}`;
+          const decisionNote = data.decision_predicted_diagnosis ? ` | decision=${data.decision_predicted_diagnosis}` : ' | decision=unknown';
+          const logLine = `[${data.system_label}] ${data.case_id} | expected=${data.expected_diagnosis} | top=${data.predicted_top_diagnosis || 'none'}${decisionNote}${answerNote} | decision_acc=${percent(data.decision_label_accuracy)} | retrieval=${percent(data.retrieval_top1_label_accuracy)} | latency=${data.latency_ms}ms${fallbackNote}`;
           setLogs((prev) => [...prev, logLine]);
           setProgress({ current: data.index, total: data.total });
           setEvaluatedCases((prev) => [...prev, data]);
@@ -271,7 +272,7 @@ export function EvaluationScreen() {
       <ScreenHeader
         eyebrow="Đánh giá reproducible"
         title="Benchmark Image RAG thật"
-        description="Binary FracAtlas retrieval/classification proxy: test hold-out bị loại khỏi corpus, rồi chạy NN, kNN, centroid và BoneRAG trên cùng bộ ảnh."
+        description="Binary FracAtlas retrieval/classification proxy: test hold-out bị loại khỏi corpus, rồi chạy NN, zero-shot prompt, kNN, centroid và BoneRAG trên cùng bộ ảnh."
       />
 
       <div className="panel benchmark-history-panel">
@@ -397,6 +398,9 @@ export function EvaluationScreen() {
               <thead>
                 <tr>
                   <th>System</th>
+                  <th>Decision</th>
+                  <th>Decision F1</th>
+                  <th>Decision BalAcc</th>
                   <th>Top-1 label</th>
                   <th>Retrieval F1</th>
                   <th>Sens / Spec</th>
@@ -419,6 +423,12 @@ export function EvaluationScreen() {
                       <strong>{system.system_label}</strong>
                       <small>{system.description}</small>
                     </td>
+                    <td>
+                      {percent(system.decision_label_accuracy)}
+                      <small>Conf {decimal(system.decision_confidence)}</small>
+                    </td>
+                    <td>{percent(system.decision_f1)}</td>
+                    <td>{percent(system.decision_balanced_accuracy)}</td>
                     <td>{percent(system.retrieval_top1_label_accuracy)}</td>
                     <td>
                       {percent(system.retrieval_f1)}
@@ -462,13 +472,14 @@ export function EvaluationScreen() {
         <div className="benchmark-table-wrap panel">
           <div className="benchmark-panel-heading"><div><span className="eyebrow">Case audit</span><h3>Chi tiết từng ảnh và từng system</h3></div><span>{evaluatedCases.length} rows</span></div>
           <table className="benchmark-table case-table">
-            <thead><tr><th>Case</th><th>System</th><th>Expected</th><th>Top evidence</th><th>Evidence majority</th><th>Answer label</th><th>Evidence</th><th>Answer</th><th>Faithful</th><th>Latency</th></tr></thead>
+            <thead><tr><th>Case</th><th>System</th><th>Expected</th><th>Decision</th><th>Top evidence</th><th>Evidence majority</th><th>Answer label</th><th>Evidence</th><th>Answer</th><th>Faithful</th><th>Latency</th></tr></thead>
             <tbody>
               {evaluatedCases.map((item, index) => (
                 <tr key={`${item.system_key}-${item.case_id}-${index}`}>
                   <td><strong>{item.case_id}</strong><small>{item.query_image_id}</small></td>
                   <td>{item.system_label}</td>
                   <td>{item.expected_diagnosis}</td>
+                  <td>{item.decision_predicted_diagnosis || 'unknown'}<small>{item.decision_source || '—'}</small></td>
                   <td>{item.predicted_top_diagnosis || 'none'}</td>
                   <td>{item.evidence_majority_diagnosis || 'tie'}<small>{percent(item.evidence_label_consensus)}</small></td>
                   <td>{item.answer_predicted_diagnosis || 'unknown'}</td>

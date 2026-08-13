@@ -34,6 +34,7 @@ chạy thật trên cùng case IDs.
 Matrix mặc định hiện so BoneRAG với nhiều thuật toán cùng bài toán:
 
 - Image-only nearest-neighbor RAG
+- zero-shot prompt classifier
 - kNN majority vote classifier
 - similarity-weighted kNN classifier
 - class-centroid/prototype classifier
@@ -42,9 +43,9 @@ Matrix mặc định hiện so BoneRAG với nhiều thuật toán cùng bài to
 Nội dung chính:
 
 - confidence interval 95% cho metric hệ thống
-- paired BoneRAG-vs-Image-only delta theo từng ảnh
+- paired BoneRAG-vs-every-executed-baseline delta theo từng ảnh
 - exact McNemar/binomial test cho metric nhị phân
-- error breakdown TP/TN/FP/FN/unknown
+- decision/retrieval/answer error breakdown TP/TN/FP/FN/unknown
 - claim guidance: được viết gì, nên cảnh báo gì, và claim nào bị chặn
 
 CLI:

@@ -27,7 +27,7 @@ from bonerag.main_algo.pipeline import BoneRAGPipeline, PipelineResult
 from bonerag.main_algo.vector_index import SearchHit, dot
 
 
-BENCHMARK_VERSION = "bonerag-fracatlas-image-v3"
+BENCHMARK_VERSION = "bonerag-fracatlas-image-v4"
 FACTUALITY_AUDITOR = FactualityAuditor()
 
 
@@ -61,6 +61,16 @@ PRIMARY_SYSTEMS: tuple[dict[str, Any], ...] = (
         "use_image": True,
         "image_alpha": 1.0,
         "rerank": False,
+    },
+    {
+        "key": "zero_shot_prompt",
+        "label": "Zero-shot Prompt Classifier",
+        "description": "Deterministic classifier: compare query image embedding with fracture/normal text prompt prototypes.",
+        "use_image": True,
+        "image_alpha": 1.0,
+        "rerank": False,
+        "classifier_mode": "zero_shot_prompt",
+        "top_k": 4,
     },
     {
         "key": "knn_majority",
@@ -346,6 +356,61 @@ def _class_centroids(
     return centroids
 
 
+def _prompt_prototypes(pipeline: BoneRAGPipeline) -> dict[str, tuple[float, ...]]:
+    cache = getattr(pipeline, "_benchmark_baseline_cache", None)
+    if cache is None:
+        cache = {}
+        setattr(pipeline, "_benchmark_baseline_cache", cache)
+    cache_key = ("zero_shot_prompt_prototypes", pipeline.encoder.__class__.__name__)
+    if cache_key in cache:
+        return cache[cache_key]
+
+    prompts = {
+        "fracture": [
+            "x-ray radiograph showing a bone fracture",
+            "fractured bone x-ray with cortical break",
+            "abnormal radiograph with visible fracture line",
+            "medical xray positive for fracture",
+        ],
+        "normal": [
+            "normal x-ray radiograph without bone fracture",
+            "healthy bone x-ray with intact cortex",
+            "medical xray negative for fracture",
+            "no acute fracture on radiograph",
+        ],
+    }
+    prototypes: dict[str, tuple[float, ...]] = {}
+    for label, prompt_list in prompts.items():
+        vectors = [pipeline.encoder.encode_text(prompt) for prompt in prompt_list]
+        dim = len(vectors[0])
+        averaged = [
+            sum(vector[idx] for vector in vectors if len(vector) == dim) / len(vectors)
+            for idx in range(dim)
+        ]
+        prototypes[label] = normalize(averaged)
+    cache[cache_key] = prototypes
+    return prototypes
+
+
+def _zero_shot_prompt_prediction(
+    pipeline: BoneRAGPipeline,
+    case: BenchmarkCase,
+) -> tuple[str | None, float, dict[str, float]]:
+    query_vector = pipeline.encoder.encode_image(case.query_image_path)
+    prototypes = _prompt_prototypes(pipeline)
+    scores = {
+        label: dot(query_vector, prototype)
+        for label, prototype in prototypes.items()
+        if len(query_vector) == len(prototype)
+    }
+    if not scores:
+        return None, 0.0, {}
+    label = max(scores, key=scores.get)
+    sorted_scores = sorted(scores.values(), reverse=True)
+    margin = sorted_scores[0] - sorted_scores[1] if len(sorted_scores) > 1 else sorted_scores[0]
+    return label, max(0.0, float(margin)), {key: round(value, 6) for key, value in scores.items()}
+
+
 def _centroid_prediction(
     pipeline: BoneRAGPipeline,
     case: BenchmarkCase,
@@ -387,7 +452,9 @@ def _run_classifier_case(
             image_alpha=float(system.get("image_alpha", 1.0)),
         )
         evidence = _plain_evidence_from_hits(pipeline, hits)
-        if mode == "centroid":
+        if mode == "zero_shot_prompt":
+            label, confidence, scores = _zero_shot_prompt_prediction(pipeline, case)
+        elif mode == "centroid":
             label, confidence, scores = _centroid_prediction(pipeline, case, exclude_ids)
         else:
             label, confidence, scores = _vote_prediction(evidence, weighted=(mode == "knn_weighted"))
@@ -507,6 +574,22 @@ def score_case(case: BenchmarkCase, result: PipelineResult, latency_ms: float) -
     evidence_labels = [item.diagnosis for item in evidence]
     evidence_majority, evidence_consensus = _majority_label(evidence_labels)
     answer_label = _diagnosis_from_text(result.answer)
+    classifier_label = result.debug.get("classifier_prediction")
+    decision_label = classifier_label or answer_label or evidence_majority or (top.diagnosis if top else None)
+    decision_source = (
+        "classifier"
+        if classifier_label
+        else "answer"
+        if answer_label
+        else "evidence_majority"
+        if evidence_majority
+        else "top_evidence"
+        if top
+        else "none"
+    )
+    decision_confidence = result.debug.get("classifier_confidence")
+    if decision_confidence is None:
+        decision_confidence = evidence_consensus if evidence_consensus else (top.rerank_score if top else 0.0)
     factuality = FACTUALITY_AUDITOR.audit(result.answer, evidence)
     first_correct_rank = next(
         (index for index, label in enumerate(evidence_labels, start=1) if label == expected),
@@ -526,9 +609,13 @@ def score_case(case: BenchmarkCase, result: PipelineResult, latency_ms: float) -
         "evidence_majority_diagnosis": evidence_majority,
         "evidence_label_consensus": round(evidence_consensus, 4),
         "answer_predicted_diagnosis": answer_label,
-        "classifier_predicted_diagnosis": result.debug.get("classifier_prediction"),
+        "classifier_predicted_diagnosis": classifier_label,
         "classifier_confidence": result.debug.get("classifier_confidence"),
         "classifier_scores": result.debug.get("classifier_scores"),
+        "decision_predicted_diagnosis": decision_label,
+        "decision_source": decision_source,
+        "decision_confidence": round(float(decision_confidence), 4) if decision_confidence is not None else 0.0,
+        "decision_label_accuracy": float(decision_label == expected),
         "retrieval_top1_label_accuracy": float(bool(top and top.diagnosis == expected)),
         "evidence_label_precision_at_4": (
             sum(label == expected for label in evidence_labels) / len(evidence_labels)
@@ -574,6 +661,8 @@ def run_system_case(
 
 def aggregate_case_scores(case_scores: list[dict[str, Any]]) -> dict[str, Any]:
     keys = (
+        "decision_label_accuracy",
+        "decision_confidence",
         "retrieval_top1_label_accuracy",
         "evidence_label_precision_at_4",
         "evidence_label_recall_at_4",
@@ -602,6 +691,7 @@ def aggregate_case_scores(case_scores: list[dict[str, Any]]) -> dict[str, Any]:
     summary["answer_unsupported_claims"] = sum(int(item.get("answer_unsupported_claims", 0)) for item in case_scores)
     summary.update(_classification_metrics(case_scores, "predicted_top_diagnosis", "retrieval"))
     summary.update(_classification_metrics(case_scores, "answer_predicted_diagnosis", "answer"))
+    summary.update(_classification_metrics(case_scores, "decision_predicted_diagnosis", "decision"))
     return summary
 
 

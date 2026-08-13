@@ -202,6 +202,7 @@ def _rule_based_benchmark_analysis(summary: dict) -> str:
         except (TypeError, ValueError):
             return 0.0
 
+    best_decision = max(systems, key=lambda item: metric(item, "decision_label_accuracy"))
     best_retrieval = max(systems, key=lambda item: metric(item, "retrieval_top1_label_accuracy"))
     best_answer = max(systems, key=lambda item: metric(item, "answer_label_accuracy"))
     ours = next((item for item in systems if item.get("system_key") == "bonerag"), None)
@@ -210,15 +211,17 @@ def _rule_based_benchmark_analysis(summary: dict) -> str:
 
     lines = [
         "Nhận xét tự động:",
+        f"- Decision tốt nhất hiện là {best_decision.get('system_label')} với accuracy {metric(best_decision, 'decision_label_accuracy'):.1%}.",
         f"- Retrieval tốt nhất hiện là {best_retrieval.get('system_label')} với Top-1 {metric(best_retrieval, 'retrieval_top1_label_accuracy'):.1%}.",
         f"- Answer label tốt nhất hiện là {best_answer.get('system_label')} với accuracy {metric(best_answer, 'answer_label_accuracy'):.1%}.",
     ]
     if ours and image_only:
+        delta_decision = metric(ours, "decision_label_accuracy") - metric(image_only, "decision_label_accuracy")
         delta_top1 = metric(ours, "retrieval_top1_label_accuracy") - metric(image_only, "retrieval_top1_label_accuracy")
         delta_p4 = metric(ours, "evidence_label_precision_at_4") - metric(image_only, "evidence_label_precision_at_4")
         delta_answer = metric(ours, "answer_label_accuracy") - metric(image_only, "answer_label_accuracy")
         lines.append(
-            f"- So với Image-only RAG, BoneRAG chênh Top-1 {delta_top1:+.1%}, P@4 {delta_p4:+.1%}, Answer {delta_answer:+.1%}."
+            f"- So với Image-only RAG, BoneRAG chênh Decision {delta_decision:+.1%}, Top-1 {delta_top1:+.1%}, P@4 {delta_p4:+.1%}, Answer {delta_answer:+.1%}."
         )
         if delta_top1 <= 0 and delta_p4 <= 0:
             lines.append("- Chưa nên claim BoneRAG là retrieval method tốt hơn; cần cải thiện reranker/evidence selection trước.")
@@ -252,6 +255,9 @@ def _gemini_benchmark_analysis(summary: dict, cases: list | None = None) -> tupl
                     "case_id": item.get("case_id"),
                     "system_key": item.get("system_key"),
                     "expected": item.get("expected_diagnosis"),
+                    "decision": item.get("decision_predicted_diagnosis"),
+                    "decision_correct": item.get("decision_label_accuracy"),
+                    "decision_source": item.get("decision_source"),
                     "top": item.get("predicted_top_diagnosis"),
                     "evidence_majority": item.get("evidence_majority_diagnosis"),
                     "answer": item.get("answer_predicted_diagnosis"),
@@ -265,7 +271,7 @@ def _gemini_benchmark_analysis(summary: dict, cases: list | None = None) -> tupl
         "ngắn gọn nhưng sắc bén. Đây là internal ablation, không phải so sánh trực tiếp với paper khác. "
         "Không được claim vượt MMed-RAG/RULE/FactMM-RAG nếu chưa reproduction chính thức. "
         "Benchmark này là binary FracAtlas retrieval/classification proxy, không phải VQA explanation benchmark có ground truth. "
-        "Nêu: hệ tốt nhất theo retrieval, hệ tốt nhất theo answer, BoneRAG có đủ mạnh chưa, "
+        "Nêu: hệ tốt nhất theo final decision, hệ tốt nhất theo retrieval, hệ tốt nhất theo answer, BoneRAG có đủ mạnh chưa, "
         "factuality/grounding metric có đáng tin đến đâu, lỗi metric/thiên lệch cần kiểm tra, và 3 bước cải thiện tiếp theo.\n\n"
         f"SUMMARY JSON:\n{json.dumps(summary, ensure_ascii=False)[:12000]}\n\n"
         f"CASE AUDIT SAMPLE:\n{json.dumps(compact_cases, ensure_ascii=False)[:12000]}"

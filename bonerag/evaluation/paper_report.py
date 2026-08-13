@@ -18,6 +18,8 @@ from typing import Any
 
 
 PAPER_METRICS: tuple[str, ...] = (
+    "decision_label_accuracy",
+    "decision_confidence",
     "retrieval_top1_label_accuracy",
     "evidence_label_precision_at_4",
     "evidence_label_recall_at_4",
@@ -29,6 +31,7 @@ PAPER_METRICS: tuple[str, ...] = (
 )
 
 BINARY_METRICS: set[str] = {
+    "decision_label_accuracy",
     "retrieval_top1_label_accuracy",
     "evidence_label_recall_at_4",
     "answer_label_accuracy",
@@ -38,6 +41,11 @@ BINARY_METRICS: set[str] = {
 }
 
 DIAGNOSTIC_METRICS: tuple[str, ...] = (
+    "decision_sensitivity",
+    "decision_specificity",
+    "decision_precision",
+    "decision_f1",
+    "decision_balanced_accuracy",
     "retrieval_sensitivity",
     "retrieval_specificity",
     "retrieval_precision",
@@ -51,12 +59,11 @@ DIAGNOSTIC_METRICS: tuple[str, ...] = (
 )
 
 DISPLAY_METRICS: tuple[tuple[str, str], ...] = (
+    ("decision_label_accuracy", "Decision accuracy"),
+    ("decision_balanced_accuracy", "Decision balanced accuracy"),
+    ("decision_f1", "Decision F1"),
     ("retrieval_top1_label_accuracy", "Top-1 retrieval"),
     ("evidence_label_precision_at_4", "Evidence P@4"),
-    ("evidence_label_mrr", "MRR"),
-    ("evidence_label_ndcg_at_4", "nDCG@4"),
-    ("answer_label_accuracy", "Answer accuracy"),
-    ("answer_factuality_score", "Faithfulness proxy"),
 )
 
 PRIMARY_BASELINE = "image_rag"
@@ -258,7 +265,12 @@ def _metric_entry(rows: list[dict[str, Any]], summary: dict[str, Any], metric: s
 
 
 def _diagnostic_metric_entries(rows: list[dict[str, Any]], prefix: str) -> dict[str, dict[str, Any]]:
-    prediction_key = "predicted_top_diagnosis" if prefix == "retrieval" else "answer_predicted_diagnosis"
+    if prefix == "decision":
+        prediction_key = "decision_predicted_diagnosis"
+    elif prefix == "retrieval":
+        prediction_key = "predicted_top_diagnosis"
+    else:
+        prediction_key = "answer_predicted_diagnosis"
     counts = _diagnostic_counts(rows, prediction_key)
     metrics = _diagnostic_metrics_from_counts(counts)
     entries: dict[str, dict[str, Any]] = {}
@@ -445,6 +457,11 @@ def _allowed_and_blocked_claims(
         if item.get("metric") == "retrieval_top1_label_accuracy"
         and item.get("baseline_system_key") == PRIMARY_BASELINE
     ), None)
+    decision = next((
+        item for item in paired
+        if item.get("metric") == "decision_label_accuracy"
+        and item.get("baseline_system_key") == PRIMARY_BASELINE
+    ), None)
     p4 = next((
         item for item in paired
         if item.get("metric") == "evidence_label_precision_at_4"
@@ -461,10 +478,13 @@ def _allowed_and_blocked_claims(
         warnings.append("Retrieval Top-1 does not show a statistically clear BoneRAG improvement over Image-only in this run.")
     if p4 and p4.get("claim_direction") == "improved":
         allowed.append("A paired improvement claim is supportable for Evidence P@4 on this run.")
+    if decision and decision.get("claim_direction") == "improved":
+        allowed.append("A paired improvement claim is supportable for final decision accuracy on this run.")
     if answer and answer.get("claim_direction") == "improved":
         allowed.append("A paired improvement claim is supportable for binary answer label accuracy on this run.")
 
     for metric, readable in (
+        ("decision_label_accuracy", "final decision accuracy"),
         ("retrieval_top1_label_accuracy", "retrieval Top-1"),
         ("answer_label_accuracy", "binary answer accuracy"),
     ):
@@ -508,6 +528,7 @@ def build_paper_evaluation(run_record: dict[str, Any]) -> dict[str, Any]:
         for metric in PAPER_METRICS:
             metrics[metric] = _metric_entry(rows, system, metric)
         if rows:
+            metrics.update(_diagnostic_metric_entries(rows, "decision"))
             metrics.update(_diagnostic_metric_entries(rows, "retrieval"))
             metrics.update(_diagnostic_metric_entries(rows, "answer"))
         else:
@@ -586,7 +607,7 @@ def build_markdown_report(run_record: dict[str, Any]) -> str:
         "",
         "## System Metrics",
         "",
-        "| System | Top-1 retrieval | Evidence P@4 | Retrieval F1 | Sens / Spec | Answer accuracy | Answer F1 | Faithfulness proxy | Latency |",
+        "| System | Decision accuracy | Decision F1 | Decision BalAcc | Top-1 retrieval | Evidence P@4 | Answer accuracy | Faithfulness proxy | Latency |",
         "|---|---:|---:|---:|---:|---:|---:|---:|---:|",
     ]
     for card in paper.get("systems", []):
@@ -594,12 +615,12 @@ def build_markdown_report(run_record: dict[str, Any]) -> str:
             "| "
             + " | ".join([
                 str(card.get("system_label", card.get("system_key", "-"))),
+                _metric_cell(card, "decision_label_accuracy"),
+                _metric_cell(card, "decision_f1"),
+                _metric_cell(card, "decision_balanced_accuracy"),
                 _metric_cell(card, "retrieval_top1_label_accuracy"),
                 _metric_cell(card, "evidence_label_precision_at_4"),
-                _metric_cell(card, "retrieval_f1"),
-                f"{_metric_cell(card, 'retrieval_sensitivity')} / {_metric_cell(card, 'retrieval_specificity')}",
                 _metric_cell(card, "answer_label_accuracy"),
-                _metric_cell(card, "answer_f1"),
                 _metric_cell(card, "answer_factuality_score"),
                 _metric_cell(card, "latency_ms", as_percent=False),
             ])

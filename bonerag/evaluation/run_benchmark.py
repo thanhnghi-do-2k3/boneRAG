@@ -127,6 +127,8 @@ def _run_generator_matrix(
                 f"  [{index:02d}/{len(cases):02d}] {case.case_id} "
                 f"expected={result['expected_diagnosis']} "
                 f"top={result['predicted_top_diagnosis'] or 'none'} "
+                f"decision={result.get('decision_predicted_diagnosis') or 'none'} "
+                f"decision_acc={result.get('decision_label_accuracy', 0.0):.0f} "
                 f"retrieval={result['retrieval_top1_label_accuracy']:.0f} "
                 f"latency={result['latency_ms']:.1f}ms"
             )
@@ -222,25 +224,23 @@ def run_benchmark_matrix(
 
 def print_markdown_report(results: list[dict[str, Any]]) -> None:
     print(
-        "\n| System | Generator | Top-1 label | Retrieval F1 | Retrieval BalAcc | "
-        "Evidence P@4 | Recall@4 | MRR | nDCG@4 | Answer label | Answer F1 | "
-        "Answer BalAcc | Ans/Evidence | Factuality | Latency | Cases |"
+        "\n| System | Generator | Decision | Decision F1 | Decision BalAcc | "
+        "Top-1 retrieval | Retrieval F1 | Evidence P@4 | MRR | nDCG@4 | "
+        "Answer label | Factuality | Latency | Cases |"
     )
-    print("|---|---|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|")
+    print("|---|---|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|")
     for result in results:
         print(
             f"| {result['system_label']} | {result['generator']} | "
+            f"{result.get('decision_label_accuracy', 0.0):.3f} | "
+            f"{result.get('decision_f1', 0.0):.3f} | "
+            f"{result.get('decision_balanced_accuracy', 0.0):.3f} | "
             f"{result['retrieval_top1_label_accuracy']:.3f} | "
             f"{result['retrieval_f1']:.3f} | "
-            f"{result['retrieval_balanced_accuracy']:.3f} | "
             f"{result['evidence_label_precision_at_4']:.3f} | "
-            f"{result['evidence_label_recall_at_4']:.3f} | "
             f"{result['evidence_label_mrr']:.3f} | "
             f"{result['evidence_label_ndcg_at_4']:.3f} | "
             f"{result['answer_label_accuracy']:.3f} | "
-            f"{result['answer_f1']:.3f} | "
-            f"{result['answer_balanced_accuracy']:.3f} | "
-            f"{result.get('answer_matches_evidence_majority', 0.0):.3f} | "
             f"{result.get('answer_factuality_score', 0.0):.3f} | "
             f"{result['latency_ms']:.1f} ms | {result['n_cases']} |"
         )

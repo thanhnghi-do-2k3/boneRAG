@@ -31,21 +31,28 @@ class TestMilestone5ComparativeEval(unittest.TestCase):
 
     def test_protocol_declares_holdout_and_systems(self) -> None:
         protocol = protocol_metadata(build_cases(SAMPLE_RECORDS, cases_per_label=2))
-        self.assertEqual(protocol["benchmark_version"], "bonerag-fracatlas-image-v3")
+        self.assertEqual(protocol["benchmark_version"], "bonerag-fracatlas-image-v4")
         self.assertEqual(protocol["task"], "binary fracture image-retrieval/classification proxy")
         self.assertTrue(protocol["test_holdout"])
         self.assertTrue(protocol["test_ids_excluded_from_retrieval"])
         self.assertFalse(protocol["external_text_corpus"])
         self.assertFalse(protocol["official_paper_reproductions"])
         self.assertFalse(protocol["vqa_explanation_ground_truth"])
-        self.assertEqual(len(SYSTEMS), 5)
+        self.assertEqual(len(SYSTEMS), 6)
         self.assertEqual(
             [system["key"] for system in SYSTEMS],
-            ["image_rag", "knn_majority", "knn_weighted", "centroid_classifier", "bonerag"],
+            [
+                "image_rag",
+                "zero_shot_prompt",
+                "knn_majority",
+                "knn_weighted",
+                "centroid_classifier",
+                "bonerag",
+            ],
         )
-        self.assertEqual(len(benchmark_systems(include_controls=True)), 6)
-        self.assertEqual(len(benchmark_systems(include_literature_proxies=True)), 5)
-        self.assertEqual(len(benchmark_systems(include_controls=True, include_literature_proxies=True)), 6)
+        self.assertEqual(len(benchmark_systems(include_controls=True)), 7)
+        self.assertEqual(len(benchmark_systems(include_literature_proxies=True)), 6)
+        self.assertEqual(len(benchmark_systems(include_controls=True, include_literature_proxies=True)), 7)
 
     def test_aggregate_reports_binary_diagnostic_metrics(self) -> None:
         scores = [
@@ -53,6 +60,9 @@ class TestMilestone5ComparativeEval(unittest.TestCase):
                 "expected_diagnosis": "fracture",
                 "predicted_top_diagnosis": "fracture",
                 "answer_predicted_diagnosis": "fracture",
+                "decision_predicted_diagnosis": "fracture",
+                "decision_label_accuracy": 1,
+                "decision_confidence": 1,
                 "retrieval_top1_label_accuracy": 1,
                 "evidence_label_precision_at_4": 1,
                 "evidence_label_recall_at_4": 1,
@@ -69,6 +79,9 @@ class TestMilestone5ComparativeEval(unittest.TestCase):
                 "expected_diagnosis": "normal",
                 "predicted_top_diagnosis": "fracture",
                 "answer_predicted_diagnosis": None,
+                "decision_predicted_diagnosis": "fracture",
+                "decision_label_accuracy": 0,
+                "decision_confidence": 0.5,
                 "retrieval_top1_label_accuracy": 0,
                 "evidence_label_precision_at_4": 0.5,
                 "evidence_label_recall_at_4": 1,
@@ -90,6 +103,8 @@ class TestMilestone5ComparativeEval(unittest.TestCase):
         self.assertEqual(summary["answer_sensitivity"], 1.0)
         self.assertEqual(summary["answer_specificity"], 0.0)
         self.assertEqual(summary["answer_factuality_score"], 0.75)
+        self.assertEqual(summary["decision_f1"], 0.6667)
+        self.assertEqual(summary["decision_balanced_accuracy"], 0.5)
 
     def test_metadata_loader_canonicalizes_fracatlas_ids_from_path_label(self) -> None:
         class FakeEncoder:

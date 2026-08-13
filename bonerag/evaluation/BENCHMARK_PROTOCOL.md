@@ -1,4 +1,4 @@
-# BoneRAG Image RAG Benchmark v3
+# BoneRAG Image RAG Benchmark v4
 
 ## Purpose
 
@@ -32,14 +32,16 @@ real same-task algorithms, not only Image-only RAG:
 
 1. `Image-only RAG`: nearest-neighbor image retrieval; top evidence drives the
    answer.
-2. `kNN Majority Vote`: deterministic classifier; majority label among k
+2. `Zero-shot Prompt Classifier`: deterministic classifier; query image
+   embedding compared with fracture/normal text prompt prototypes.
+3. `kNN Majority Vote`: deterministic classifier; majority label among k
    nearest image embeddings.
-3. `Similarity-weighted kNN`: deterministic classifier; similarity-weighted
+4. `Similarity-weighted kNN`: deterministic classifier; similarity-weighted
    label vote among k nearest image embeddings.
-4. `Class-centroid Prototype`: deterministic classifier; query image embedding
+5. `Class-centroid Prototype`: deterministic classifier; query image embedding
    compared with fracture/normal class centroids computed after excluding the
    full test hold-out.
-5. `BoneRAG (ours)`: image retrieval plus anatomical/pathology reranking and
+6. `BoneRAG (ours)`: image retrieval plus anatomical/pathology reranking and
    evidence gate.
 
 Optional answer-level control can be enabled for auditing:
@@ -58,6 +60,13 @@ benchmark rows by name alone.
 
 ## Metrics
 
+- `decision_label_accuracy`: final system decision has the true folder label.
+  For classifier baselines this is the classifier output; for RAG rows this is
+  the normalized generated answer, falling back to evidence consensus/top
+  evidence only if the answer is unparseable.
+- `decision_sensitivity`, `decision_specificity`, `decision_precision`,
+  `decision_f1`, and `decision_balanced_accuracy`: binary diagnostic metrics for
+  the final system decision, with fracture treated as positive.
 - `retrieval_top1_label_accuracy`: top retrieved evidence has the true folder
   label.
 - `evidence_label_precision_at_4`: fraction of top-4 evidence with the true
@@ -86,8 +95,9 @@ benchmark rows by name alone.
 - `answer_sensitivity`, `answer_specificity`, `answer_precision`,
   `answer_f1`, and `answer_balanced_accuracy`: the same binary diagnostic
   metrics after normalizing the generated answer to fracture/normal/unknown.
-- `retrieval_tp/tn/fp/fn/unknown` and `answer_tp/tn/fp/fn/unknown`: confusion
-  counts for auditing label-specific failure modes.
+- `decision_tp/tn/fp/fn/unknown`, `retrieval_tp/tn/fp/fn/unknown`, and
+  `answer_tp/tn/fp/fn/unknown`: confusion counts for auditing label-specific
+  failure modes.
 - `latency_ms`: end-to-end per-case latency, including retrieval and generation.
 - `generator_fallback_rate`: fraction of cases where a requested neural
   generator could not load and fell back to the evidence synthesizer; this must
