@@ -22,7 +22,9 @@ from bonerag.main_algo.data import (
     resolve_dataset_image_path,
 )
 from bonerag.main_algo.factuality import FactualityAuditor
+from bonerag.main_algo.encoder import normalize
 from bonerag.main_algo.pipeline import BoneRAGPipeline, PipelineResult
+from bonerag.main_algo.vector_index import SearchHit, dot
 
 
 BENCHMARK_VERSION = "bonerag-fracatlas-image-v3"
@@ -55,10 +57,40 @@ PRIMARY_SYSTEMS: tuple[dict[str, Any], ...] = (
     {
         "key": "image_rag",
         "label": "Image-only RAG",
-        "description": "Chỉ dùng embedding ảnh, không dùng reranking domain.",
+        "description": "Nearest-neighbor image retrieval baseline; top evidence drives the answer.",
         "use_image": True,
         "image_alpha": 1.0,
         "rerank": False,
+    },
+    {
+        "key": "knn_majority",
+        "label": "kNN Majority Vote",
+        "description": "Deterministic classifier: majority label among k nearest image embeddings.",
+        "use_image": True,
+        "image_alpha": 1.0,
+        "rerank": False,
+        "classifier_mode": "knn_majority",
+        "top_k": 5,
+    },
+    {
+        "key": "knn_weighted",
+        "label": "Similarity-weighted kNN",
+        "description": "Deterministic classifier: similarity-weighted vote among k nearest image embeddings.",
+        "use_image": True,
+        "image_alpha": 1.0,
+        "rerank": False,
+        "classifier_mode": "knn_weighted",
+        "top_k": 5,
+    },
+    {
+        "key": "centroid_classifier",
+        "label": "Class-centroid Prototype",
+        "description": "Deterministic classifier: compare query image embedding with fracture/normal class centroids.",
+        "use_image": True,
+        "image_alpha": 1.0,
+        "rerank": False,
+        "classifier_mode": "centroid",
+        "top_k": 4,
     },
     {
         "key": "bonerag",
@@ -192,12 +224,207 @@ def _majority_label(labels: list[str]) -> tuple[str | None, float]:
     return majority, max(fracture_count, normal_count) / len(valid)
 
 
+def _evidence_from_hit(pipeline: BoneRAGPipeline, hit: SearchHit):
+    from bonerag.main_algo.pipeline import Evidence
+
+    parent_id = hit.record_id.split("#")[0]
+    rec = pipeline.record_by_id[parent_id]
+    return Evidence(
+        image_id=rec.image_id,
+        image_path=rec.image_path,
+        image_width=rec.image_width,
+        image_height=rec.image_height,
+        fracture_boxes=rec.fracture_boxes,
+        title=rec.title,
+        body_part=rec.body_part,
+        diagnosis=rec.diagnosis,
+        fracture_type=rec.fracture_type,
+        region=rec.region,
+        evidence_note=f"{rec.evidence_note} [Algorithm baseline evidence; no domain reranking.]",
+        retrieval_score=hit.score,
+        rerank_score=hit.score,
+    )
+
+
+def _plain_evidence_from_hits(pipeline: BoneRAGPipeline, hits: list[SearchHit]):
+    return [
+        _evidence_from_hit(pipeline, hit)
+        for hit in hits
+        if hit.record_id.split("#")[0] in pipeline.record_by_id
+    ]
+
+
+def _vote_prediction(evidence, weighted: bool = False) -> tuple[str | None, float, dict[str, float]]:
+    weights: dict[str, float] = {"fracture": 0.0, "normal": 0.0}
+    for index, item in enumerate(evidence):
+        if item.diagnosis not in weights:
+            continue
+        weight = max(0.0, float(item.retrieval_score)) + 1e-6 if weighted else 1.0
+        # Tiny rank bonus makes exact ties deterministic without changing normal cases.
+        weight += 1e-9 * (len(evidence) - index)
+        weights[item.diagnosis] += weight
+    total = weights["fracture"] + weights["normal"]
+    if total <= 0:
+        return None, 0.0, weights
+    if math.isclose(weights["fracture"], weights["normal"], abs_tol=1e-12):
+        label = evidence[0].diagnosis if evidence and evidence[0].diagnosis in weights else None
+    else:
+        label = "fracture" if weights["fracture"] > weights["normal"] else "normal"
+    confidence = weights[label] / total if label else 0.0
+    return label, confidence, {key: round(value, 6) for key, value in weights.items()}
+
+
+def _answer_from_algorithm(label: str | None, confidence: float, mode: str) -> str:
+    _ = confidence, mode
+    if label == "fracture":
+        return "fracture"
+    if label == "normal":
+        return "normal"
+    return "unknown"
+
+
+def _vector_from_index(pipeline: BoneRAGPipeline, record_id: str):
+    index = pipeline.index
+    if hasattr(index, "_vectors"):
+        vectors = getattr(index, "_vectors")
+        vector = vectors.get(record_id) or vectors.get(f"{record_id}#image")
+        if vector is not None:
+            return tuple(float(value) for value in vector)
+    if hasattr(index, "id_to_record") and hasattr(index, "index"):
+        id_to_record = getattr(index, "id_to_record")
+        try:
+            position = id_to_record.index(record_id)
+        except ValueError:
+            position = -1
+        if position >= 0:
+            reconstructed = index.index.reconstruct(position)
+            return tuple(float(value) for value in reconstructed.tolist())
+    return None
+
+
+def _record_vector(pipeline: BoneRAGPipeline, record: ImageRecord):
+    vector = _vector_from_index(pipeline, record.image_id)
+    if vector is not None:
+        return vector
+    if record.image_path and Path(record.image_path).exists():
+        try:
+            return pipeline.encoder.encode_image(record.image_path)
+        except Exception:
+            pass
+    return pipeline.encoder.encode_text(record.text)
+
+
+def _class_centroids(
+    pipeline: BoneRAGPipeline,
+    exclude_ids: set[str],
+) -> dict[str, tuple[float, ...]]:
+    cache = getattr(pipeline, "_benchmark_baseline_cache", None)
+    if cache is None:
+        cache = {}
+        setattr(pipeline, "_benchmark_baseline_cache", cache)
+    cache_key = ("class_centroids", tuple(sorted(exclude_ids)))
+    if cache_key in cache:
+        return cache[cache_key]
+
+    vectors_by_label: dict[str, list[tuple[float, ...]]] = {"fracture": [], "normal": []}
+    for record in pipeline.records:
+        if record.image_id in exclude_ids or record.diagnosis not in vectors_by_label:
+            continue
+        vectors_by_label[record.diagnosis].append(_record_vector(pipeline, record))
+
+    centroids: dict[str, tuple[float, ...]] = {}
+    for label, vectors in vectors_by_label.items():
+        if not vectors:
+            continue
+        dim = len(vectors[0])
+        averaged = [
+            sum(vector[idx] for vector in vectors if len(vector) == dim) / len(vectors)
+            for idx in range(dim)
+        ]
+        centroids[label] = normalize(averaged)
+    cache[cache_key] = centroids
+    return centroids
+
+
+def _centroid_prediction(
+    pipeline: BoneRAGPipeline,
+    case: BenchmarkCase,
+    exclude_ids: set[str],
+) -> tuple[str | None, float, dict[str, float]]:
+    query_vector = pipeline.encoder.encode_image(case.query_image_path)
+    centroids = _class_centroids(pipeline, exclude_ids)
+    scores = {
+        label: dot(query_vector, centroid)
+        for label, centroid in centroids.items()
+        if len(query_vector) == len(centroid)
+    }
+    if not scores:
+        return None, 0.0, {}
+    label = max(scores, key=scores.get)
+    sorted_scores = sorted(scores.values(), reverse=True)
+    margin = sorted_scores[0] - sorted_scores[1] if len(sorted_scores) > 1 else sorted_scores[0]
+    return label, max(0.0, float(margin)), {key: round(value, 6) for key, value in scores.items()}
+
+
+def _run_classifier_case(
+    pipeline: BoneRAGPipeline,
+    case: BenchmarkCase,
+    system: dict[str, Any],
+    test_query_ids: set[str] | None = None,
+) -> tuple[PipelineResult, float]:
+    original_top_k = pipeline.top_k
+    original_min_similarity = pipeline.min_similarity
+    original_gate_min_similarity = pipeline.gate.min_similarity
+    mode = str(system.get("classifier_mode"))
+    exclude_ids = (test_query_ids or set()) | {case.query_image_id}
+    try:
+        pipeline.top_k = int(system.get("top_k", 5))
+        start = time.perf_counter()
+        hits = pipeline.retrieve(
+            case.question,
+            image_input=case.query_image_path,
+            exclude_ids=exclude_ids,
+            image_alpha=float(system.get("image_alpha", 1.0)),
+        )
+        evidence = _plain_evidence_from_hits(pipeline, hits)
+        if mode == "centroid":
+            label, confidence, scores = _centroid_prediction(pipeline, case, exclude_ids)
+        else:
+            label, confidence, scores = _vote_prediction(evidence, weighted=(mode == "knn_weighted"))
+        answer = _answer_from_algorithm(label, confidence, mode)
+        result = PipelineResult(
+            question=case.question,
+            used_retrieval=True,
+            answer=answer,
+            evidence=evidence,
+            debug={
+                "classifier_mode": mode,
+                "classifier_prediction": label,
+                "classifier_confidence": round(confidence, 4),
+                "classifier_scores": scores,
+                "encoder_type": pipeline.encoder.__class__.__name__,
+                "generator_type": "deterministic_algorithm",
+                "index_type": pipeline.index.__class__.__name__,
+                "top_hit_score": hits[0].score if hits else 0.0,
+                "evidence_count": len(evidence),
+            },
+        )
+        return result, (time.perf_counter() - start) * 1000.0
+    finally:
+        pipeline.top_k = original_top_k
+        pipeline.min_similarity = original_min_similarity
+        pipeline.gate.min_similarity = original_gate_min_similarity
+
+
 def _run_one_case(
     pipeline: BoneRAGPipeline,
     case: BenchmarkCase,
     system: dict[str, Any],
     test_query_ids: set[str] | None = None,
 ) -> tuple[PipelineResult, float]:
+    if system.get("classifier_mode"):
+        return _run_classifier_case(pipeline, case, system, test_query_ids=test_query_ids)
+
     original_weights = (
         pipeline.reranker.weight_sim,
         pipeline.reranker.weight_anatomy,
@@ -299,6 +526,9 @@ def score_case(case: BenchmarkCase, result: PipelineResult, latency_ms: float) -
         "evidence_majority_diagnosis": evidence_majority,
         "evidence_label_consensus": round(evidence_consensus, 4),
         "answer_predicted_diagnosis": answer_label,
+        "classifier_predicted_diagnosis": result.debug.get("classifier_prediction"),
+        "classifier_confidence": result.debug.get("classifier_confidence"),
+        "classifier_scores": result.debug.get("classifier_scores"),
         "retrieval_top1_label_accuracy": float(bool(top and top.diagnosis == expected)),
         "evidence_label_precision_at_4": (
             sum(label == expected for label in evidence_labels) / len(evidence_labels)

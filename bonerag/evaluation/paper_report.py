@@ -292,7 +292,7 @@ def _claim_direction(metric: str, delta: float, low: float, high: float) -> str:
     return "improved" if delta > 0 else "degraded"
 
 
-def _paired_comparison(
+def _paired_comparison_for_baseline(
     grouped: dict[str, list[dict[str, Any]]],
     systems_by_key: dict[str, dict[str, Any]],
     baseline_key: str = PRIMARY_BASELINE,
@@ -350,6 +350,43 @@ def _paired_comparison(
     return comparisons
 
 
+def _paired_comparisons_against_method(
+    grouped: dict[str, list[dict[str, Any]]],
+    systems_by_key: dict[str, dict[str, Any]],
+    method_key: str = PRIMARY_METHOD,
+) -> list[dict[str, Any]]:
+    def comparable_baseline(key: str) -> bool:
+        system = systems_by_key.get(key, {})
+        reference = str(system.get("paper_reference", "")).lower()
+        label = str(system.get("system_label", "")).lower()
+        if key == method_key or key.startswith("bonerag_"):
+            return False
+        if "proxy" in key or "proxy" in reference:
+            return False
+        if "not official reproduction" in reference:
+            return False
+        if "inspired" in label or "style" in label:
+            return False
+        return bool(grouped.get(key) and grouped.get(method_key))
+
+    comparisons: list[dict[str, Any]] = []
+    baseline_keys = [
+        key for key in systems_by_key
+        if comparable_baseline(key)
+    ]
+    baseline_keys.sort(key=lambda key: (0 if key == PRIMARY_BASELINE else 1, key))
+    for baseline_key in baseline_keys:
+        comparisons.extend(
+            _paired_comparison_for_baseline(
+                grouped,
+                systems_by_key,
+                baseline_key=baseline_key,
+                method_key=method_key,
+            )
+        )
+    return comparisons
+
+
 def _error_breakdown(rows: list[dict[str, Any]]) -> dict[str, Any]:
     retrieval_counts = _diagnostic_counts(rows, "predicted_top_diagnosis")
     answer_counts = _diagnostic_counts(rows, "answer_predicted_diagnosis")
@@ -403,9 +440,21 @@ def _allowed_and_blocked_claims(
     if not has_vqa_gt:
         warnings.append("Answer metrics are binary label proxies; use VQA-RAD/SLAKE/etc. for real VQA claims.")
 
-    top1 = next((item for item in paired if item.get("metric") == "retrieval_top1_label_accuracy"), None)
-    p4 = next((item for item in paired if item.get("metric") == "evidence_label_precision_at_4"), None)
-    answer = next((item for item in paired if item.get("metric") == "answer_label_accuracy"), None)
+    top1 = next((
+        item for item in paired
+        if item.get("metric") == "retrieval_top1_label_accuracy"
+        and item.get("baseline_system_key") == PRIMARY_BASELINE
+    ), None)
+    p4 = next((
+        item for item in paired
+        if item.get("metric") == "evidence_label_precision_at_4"
+        and item.get("baseline_system_key") == PRIMARY_BASELINE
+    ), None)
+    answer = next((
+        item for item in paired
+        if item.get("metric") == "answer_label_accuracy"
+        and item.get("baseline_system_key") == PRIMARY_BASELINE
+    ), None)
     if top1 and top1.get("claim_direction") == "improved":
         allowed.append("A paired improvement claim is supportable for retrieval Top-1 on this run.")
     elif top1:
@@ -414,6 +463,27 @@ def _allowed_and_blocked_claims(
         allowed.append("A paired improvement claim is supportable for Evidence P@4 on this run.")
     if answer and answer.get("claim_direction") == "improved":
         allowed.append("A paired improvement claim is supportable for binary answer label accuracy on this run.")
+
+    for metric, readable in (
+        ("retrieval_top1_label_accuracy", "retrieval Top-1"),
+        ("answer_label_accuracy", "binary answer accuracy"),
+    ):
+        metric_pairs = [item for item in paired if item.get("metric") == metric]
+        if not metric_pairs:
+            continue
+        not_improved = [
+            str(item.get("baseline_system_label", item.get("baseline_system_key", "baseline")))
+            for item in metric_pairs
+            if item.get("claim_direction") != "improved"
+        ]
+        if not_improved:
+            warnings.append(
+                f"BoneRAG does not show a statistically clear improvement over every executed same-task baseline for {readable}; unresolved baselines: "
+                + ", ".join(not_improved)
+                + "."
+            )
+        else:
+            allowed.append(f"BoneRAG shows paired improvement over every executed same-task baseline for {readable}.")
 
     return {"allowed": allowed, "warnings": warnings, "blocked": blocked}
 
@@ -457,7 +527,7 @@ def build_paper_evaluation(run_record: dict[str, Any]) -> dict[str, Any]:
             "error_breakdown": _error_breakdown(rows),
         })
 
-    paired = _paired_comparison(grouped, systems_by_key)
+    paired = _paired_comparisons_against_method(grouped, systems_by_key)
     claims = _allowed_and_blocked_claims(protocol, systems, paired)
     return {
         "schema_version": "paper-eval-v1",
@@ -538,10 +608,10 @@ def build_markdown_report(run_record: dict[str, Any]) -> str:
 
     lines.extend([
         "",
-        "## Paired BoneRAG vs Image-only",
+        "## Paired BoneRAG vs Executed Baselines",
         "",
-        "| Metric | Image-only | BoneRAG | Delta | 95% CI | McNemar p | Direction |",
-        "|---|---:|---:|---:|---:|---:|---|",
+        "| Baseline | Metric | Baseline | BoneRAG | Delta | 95% CI | McNemar p | Direction |",
+        "|---|---|---:|---:|---:|---:|---:|---|",
     ])
     for item in paper.get("paired_comparisons", []):
         metric = str(item.get("metric", "-"))
@@ -556,12 +626,13 @@ def build_markdown_report(run_record: dict[str, Any]) -> str:
         )
         p_text = f"{_as_float(p_value):.4f}" if p_value is not None else "-"
         lines.append(
-            f"| `{metric}` | {formatter(item.get('baseline_mean'))} | "
+            f"| {item.get('baseline_system_label', item.get('baseline_system_key', '-'))} | "
+            f"`{metric}` | {formatter(item.get('baseline_mean'))} | "
             f"{formatter(item.get('method_mean'))} | {delta_text} | {ci_text} | "
             f"{p_text} | {item.get('claim_direction', '-')} |"
         )
     if not paper.get("paired_comparisons"):
-        lines.append("| - | - | - | - | - | - | No paired comparison available |")
+        lines.append("| - | - | - | - | - | - | - | No paired comparison available |")
 
     claims = paper.get("claim_guidance", {})
     lines.extend(["", "## Claim Guidance", "", "Allowed:"])

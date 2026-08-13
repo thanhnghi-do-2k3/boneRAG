@@ -31,6 +31,14 @@ Sau mỗi run FracAtlas benchmark, backend/CLI sinh thêm `paper_evaluation` tro
 run JSON. Artifact này không tạo baseline giả; nó chỉ phân tích các system đã
 chạy thật trên cùng case IDs.
 
+Matrix mặc định hiện so BoneRAG với nhiều thuật toán cùng bài toán:
+
+- Image-only nearest-neighbor RAG
+- kNN majority vote classifier
+- similarity-weighted kNN classifier
+- class-centroid/prototype classifier
+- BoneRAG
+
 Nội dung chính:
 
 - confidence interval 95% cho metric hệ thống

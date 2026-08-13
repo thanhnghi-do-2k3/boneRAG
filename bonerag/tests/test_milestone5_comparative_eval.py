@@ -38,10 +38,14 @@ class TestMilestone5ComparativeEval(unittest.TestCase):
         self.assertFalse(protocol["external_text_corpus"])
         self.assertFalse(protocol["official_paper_reproductions"])
         self.assertFalse(protocol["vqa_explanation_ground_truth"])
-        self.assertEqual(len(SYSTEMS), 2)
-        self.assertEqual(len(benchmark_systems(include_controls=True)), 3)
-        self.assertEqual(len(benchmark_systems(include_literature_proxies=True)), 2)
-        self.assertEqual(len(benchmark_systems(include_controls=True, include_literature_proxies=True)), 3)
+        self.assertEqual(len(SYSTEMS), 5)
+        self.assertEqual(
+            [system["key"] for system in SYSTEMS],
+            ["image_rag", "knn_majority", "knn_weighted", "centroid_classifier", "bonerag"],
+        )
+        self.assertEqual(len(benchmark_systems(include_controls=True)), 6)
+        self.assertEqual(len(benchmark_systems(include_literature_proxies=True)), 5)
+        self.assertEqual(len(benchmark_systems(include_controls=True, include_literature_proxies=True)), 6)
 
     def test_aggregate_reports_binary_diagnostic_metrics(self) -> None:
         scores = [

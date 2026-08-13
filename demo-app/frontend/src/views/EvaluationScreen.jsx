@@ -86,8 +86,9 @@ function PaperEvaluationPanel({ paperEvaluation }) {
           <table className="benchmark-table">
             <thead>
               <tr>
+                <th>Baseline</th>
                 <th>Metric</th>
-                <th>Image-only</th>
+                <th>Baseline</th>
                 <th>BoneRAG</th>
                 <th>Delta</th>
                 <th>95% CI</th>
@@ -99,7 +100,8 @@ function PaperEvaluationPanel({ paperEvaluation }) {
               {paired.map((item) => {
                 const isLatency = item.metric === 'latency_ms';
                 return (
-                  <tr key={item.metric}>
+                  <tr key={`${item.baseline_system_key}-${item.metric}`}>
+                    <td>{item.baseline_system_label || item.baseline_system_key}</td>
                     <td><strong>{item.metric}</strong><small>{item.n_paired_cases} paired cases</small></td>
                     <td>{isLatency ? `${decimal(item.baseline_mean)} ms` : percent(item.baseline_mean)}</td>
                     <td>{isLatency ? `${decimal(item.method_mean)} ms` : percent(item.method_mean)}</td>
@@ -269,7 +271,7 @@ export function EvaluationScreen() {
       <ScreenHeader
         eyebrow="Đánh giá reproducible"
         title="Benchmark Image RAG thật"
-        description="Binary FracAtlas retrieval/classification proxy: test hold-out bị loại khỏi corpus, rồi chạy Image-only và BoneRAG trên cùng bộ ảnh."
+        description="Binary FracAtlas retrieval/classification proxy: test hold-out bị loại khỏi corpus, rồi chạy NN, kNN, centroid và BoneRAG trên cùng bộ ảnh."
       />
 
       <div className="panel benchmark-history-panel">

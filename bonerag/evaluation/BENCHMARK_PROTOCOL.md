@@ -25,13 +25,21 @@ direct reproduction of RULE, MMed-RAG, or FactMM-RAG.
 
 ## Systems
 
-Every system uses the same encoder, FAISS image index, corpus, top-k, generator,
-and case order unless explicitly stated. These systems are internal baselines
-and ablations, not reproductions of published systems. The default publishable
-matrix excludes controls to keep the result focused and efficient:
+Every system uses the same encoder, FAISS image index, corpus, and case order
+unless explicitly stated. These systems are internal baselines and ablations,
+not reproductions of published systems. The default publishable matrix includes
+real same-task algorithms, not only Image-only RAG:
 
-1. `Image-only RAG`: image vector weight 1.0.
-2. `BoneRAG (ours)`: image retrieval plus anatomical/pathology reranking and
+1. `Image-only RAG`: nearest-neighbor image retrieval; top evidence drives the
+   answer.
+2. `kNN Majority Vote`: deterministic classifier; majority label among k
+   nearest image embeddings.
+3. `Similarity-weighted kNN`: deterministic classifier; similarity-weighted
+   label vote among k nearest image embeddings.
+4. `Class-centroid Prototype`: deterministic classifier; query image embedding
+   compared with fracture/normal class centroids computed after excluding the
+   full test hold-out.
+5. `BoneRAG (ours)`: image retrieval plus anatomical/pathology reranking and
    evidence gate.
 
 Optional answer-level control can be enabled for auditing:
