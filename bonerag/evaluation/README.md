@@ -48,6 +48,7 @@ Matrix mặc định hiện so BoneRAG với nhiều thuật toán cùng bài to
 - kNN majority vote classifier
 - similarity-weighted kNN classifier
 - class-centroid/prototype classifier
+- frozen-embedding linear probe classifier trained outside the test hold-out
 - BoneRAG
 
 Nội dung chính:

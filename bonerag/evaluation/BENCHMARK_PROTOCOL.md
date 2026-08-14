@@ -62,7 +62,10 @@ real same-task algorithms, not only Image-only RAG:
 5. `Class-centroid Prototype`: deterministic classifier; query image embedding
    compared with fracture/normal class centroids computed after excluding the
    full test hold-out.
-6. `BoneRAG (ours)`: image retrieval plus anatomical/pathology reranking and
+6. `Frozen-embedding Linear Probe`: supervised logistic probe trained on image
+   embeddings from non-test FracAtlas records only. This is a stronger same-task
+   classifier baseline, not a retrieval/generation method.
+7. `BoneRAG (ours)`: image retrieval plus anatomical/pathology reranking and
    evidence gate.
 
 Optional answer-level control can be enabled for auditing:

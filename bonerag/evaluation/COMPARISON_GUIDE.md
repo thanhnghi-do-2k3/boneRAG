@@ -46,7 +46,7 @@ yes/no đang được sinh từ annotation/folder label.
 | Similarity-weighted kNN trên image embedding | Kiểm tra top-k vote có tốt hơn nearest neighbor/top-1 không | Đã thêm vào benchmark mặc định. Dùng trọng số cosine similarity, không gọi generator. |
 | Class-centroid/prototype classifier | Kiểm tra embedding space có phân tách fracture/normal bằng prototype lớp không | Đã thêm vào benchmark mặc định. Centroid được tính sau khi loại full test hold-out. |
 | Zero-shot BiomedCLIP prompt classifier | Kiểm tra encoder image-text có tự phân biệt fracture/normal bằng prompt không | Đã thêm vào benchmark mặc định. So query image embedding với prototype prompt fracture/normal. |
-| Linear probe / logistic regression trên frozen embeddings | Baseline supervised nhẹ, thường mạnh hơn retrieval label proxy | Có, cần train/val/test split patient/image-level rõ ràng. |
+| Linear probe / logistic regression trên frozen embeddings | Baseline supervised nhẹ, thường mạnh hơn retrieval label proxy | Đã thêm vào benchmark mặc định. Train trên non-test records sau khi loại full test hold-out; dùng để kiểm tra BoneRAG có hơn classifier cùng bài toán không. |
 | Supervised ViT/DenseNet/ResNet classifier | Baseline classification chuẩn cho paper | Có, nhưng cần training pipeline và confidence interval. |
 | YOLO/Mask-RCNN/segmentation baseline | Đánh giá localization/explanation bằng box/mask thay vì lời giải thích tự do | Có, vì FracAtlas có annotations; cần mAP/IoU metric. |
 | Official MURA/GRAZPEDWRI-DX transfer | Kiểm tra generalization ngoài FracAtlas | Có sau khi thêm dataset loaders và protocol riêng. |

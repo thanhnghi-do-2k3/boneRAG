@@ -112,6 +112,16 @@ PRIMARY_SYSTEMS: tuple[dict[str, Any], ...] = (
         "top_k": 4,
     },
     {
+        "key": "linear_probe",
+        "label": "Frozen-embedding Linear Probe",
+        "description": "Supervised same-task baseline: logistic probe trained on non-test image embeddings.",
+        "use_image": True,
+        "image_alpha": 1.0,
+        "rerank": False,
+        "classifier_mode": "linear_probe",
+        "top_k": 4,
+    },
+    {
         "key": "bonerag",
         "label": "BoneRAG (ours)",
         "description": "Image retrieval với anatomical/pathology reranking và evidence gate.",
@@ -442,6 +452,116 @@ def _centroid_prediction(
     return label, max(0.0, float(margin)), {key: round(value, 6) for key, value in scores.items()}
 
 
+def _linear_probe_model(
+    pipeline: BoneRAGPipeline,
+    exclude_ids: set[str],
+) -> dict[str, Any]:
+    """Train/cache a small logistic probe on frozen image embeddings.
+
+    The full benchmark test hold-out is excluded by the caller. This gives a
+    stronger same-task baseline than kNN while avoiding any external labels.
+    """
+    cache = getattr(pipeline, "_benchmark_baseline_cache", None)
+    if cache is None:
+        cache = {}
+        setattr(pipeline, "_benchmark_baseline_cache", cache)
+    cache_key = ("linear_probe", tuple(sorted(exclude_ids)))
+    if cache_key in cache:
+        return cache[cache_key]
+
+    try:
+        import numpy as np
+    except ModuleNotFoundError as exc:  # pragma: no cover - numpy is present in benchmark envs.
+        raise RuntimeError("Linear probe baseline requires numpy.") from exc
+
+    vectors: list[tuple[float, ...]] = []
+    labels: list[int] = []
+    counts = {"fracture": 0, "normal": 0}
+    dim: int | None = None
+    for record in pipeline.records:
+        if record.image_id in exclude_ids or record.diagnosis not in counts:
+            continue
+        vector = _record_vector(pipeline, record)
+        if dim is None:
+            dim = len(vector)
+        if len(vector) != dim:
+            continue
+        vectors.append(vector)
+        labels.append(1 if record.diagnosis == "fracture" else 0)
+        counts[record.diagnosis] += 1
+
+    if counts["fracture"] == 0 or counts["normal"] == 0 or not vectors:
+        raise RuntimeError("Linear probe needs both fracture and normal training records outside the test hold-out.")
+
+    x = np.asarray(vectors, dtype=np.float32)
+    y = np.asarray(labels, dtype=np.float32)
+    mean = x.mean(axis=0)
+    std = x.std(axis=0)
+    std[std < 1e-6] = 1.0
+    x = (x - mean) / std
+
+    n_samples, n_features = x.shape
+    positive_count = float(y.sum())
+    negative_count = float(n_samples - positive_count)
+    sample_weights = np.where(
+        y > 0.5,
+        n_samples / (2.0 * max(positive_count, 1.0)),
+        n_samples / (2.0 * max(negative_count, 1.0)),
+    ).astype(np.float32)
+
+    weights = np.zeros(n_features, dtype=np.float32)
+    bias = 0.0
+    learning_rate = 0.12
+    l2 = 0.01
+    epochs = 180
+    for epoch in range(epochs):
+        logits = np.clip(x @ weights + bias, -30.0, 30.0)
+        probs = 1.0 / (1.0 + np.exp(-logits))
+        error = (probs - y) * sample_weights
+        grad_w = (x.T @ error) / n_samples + l2 * weights
+        grad_b = float(error.mean())
+        step = learning_rate / math.sqrt(1.0 + epoch / 45.0)
+        weights -= step * grad_w
+        bias -= step * grad_b
+
+    model = {
+        "weights": weights,
+        "bias": float(bias),
+        "mean": mean,
+        "std": std,
+        "training_counts": counts,
+        "epochs": epochs,
+        "l2": l2,
+    }
+    cache[cache_key] = model
+    return model
+
+
+def _linear_probe_prediction(
+    pipeline: BoneRAGPipeline,
+    case: BenchmarkCase,
+    exclude_ids: set[str],
+) -> tuple[str | None, float, dict[str, float]]:
+    import numpy as np
+
+    model = _linear_probe_model(pipeline, exclude_ids)
+    query_vector = np.asarray(pipeline.encoder.encode_image(case.query_image_path), dtype=np.float32)
+    if len(query_vector) != len(model["weights"]):
+        return None, 0.0, {"dimension_mismatch": 1.0}
+    x = (query_vector - model["mean"]) / model["std"]
+    logit = float(np.clip(x @ model["weights"] + model["bias"], -30.0, 30.0))
+    fracture_prob = 1.0 / (1.0 + math.exp(-logit))
+    label = "fracture" if fracture_prob >= 0.5 else "normal"
+    confidence = fracture_prob if label == "fracture" else 1.0 - fracture_prob
+    counts = model["training_counts"]
+    return label, confidence, {
+        "fracture_probability": round(float(fracture_prob), 6),
+        "normal_probability": round(float(1.0 - fracture_prob), 6),
+        "training_fracture": float(counts["fracture"]),
+        "training_normal": float(counts["normal"]),
+    }
+
+
 def _run_classifier_case(
     pipeline: BoneRAGPipeline,
     case: BenchmarkCase,
@@ -455,6 +575,8 @@ def _run_classifier_case(
     exclude_ids = (test_query_ids or set()) | {case.query_image_id}
     try:
         pipeline.top_k = int(system.get("top_k", 5))
+        if mode == "linear_probe":
+            _linear_probe_model(pipeline, exclude_ids)
         start = time.perf_counter()
         hits = pipeline.retrieve(
             case.question,
@@ -467,6 +589,8 @@ def _run_classifier_case(
             label, confidence, scores = _zero_shot_prompt_prediction(pipeline, case)
         elif mode == "centroid":
             label, confidence, scores = _centroid_prediction(pipeline, case, exclude_ids)
+        elif mode == "linear_probe":
+            label, confidence, scores = _linear_probe_prediction(pipeline, case, exclude_ids)
         else:
             label, confidence, scores = _vote_prediction(evidence, weighted=(mode == "knn_weighted"))
         answer = _answer_from_algorithm(label, confidence, mode)

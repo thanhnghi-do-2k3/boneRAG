@@ -170,6 +170,12 @@ BASELINE_REGISTRY: tuple[dict[str, Any], ...] = (
         "implemented": True,
     },
     {
+        "key": "linear_probe",
+        "label": "Frozen-embedding linear probe",
+        "comparison_role": "supervised same-task classifier trained outside the test hold-out",
+        "implemented": True,
+    },
+    {
         "key": "detector_segmenter",
         "label": "Detector/segmenter baseline",
         "comparison_role": "localization/segmentation baseline for boxed or masked datasets",

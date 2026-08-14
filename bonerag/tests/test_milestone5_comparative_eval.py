@@ -43,7 +43,7 @@ class TestMilestone5ComparativeEval(unittest.TestCase):
         self.assertFalse(protocol["query_localization_output_scored"])
         self.assertIn("grounded_vqa_manifest", protocol)
         self.assertIn("BTXRD/BTRXD", [item["label"] for item in protocol["grounded_vqa_manifest"]["datasets"]])
-        self.assertEqual(len(SYSTEMS), 6)
+        self.assertEqual(len(SYSTEMS), 7)
         self.assertEqual(
             [system["key"] for system in SYSTEMS],
             [
@@ -52,12 +52,13 @@ class TestMilestone5ComparativeEval(unittest.TestCase):
                 "knn_majority",
                 "knn_weighted",
                 "centroid_classifier",
+                "linear_probe",
                 "bonerag",
             ],
         )
-        self.assertEqual(len(benchmark_systems(include_controls=True)), 7)
-        self.assertEqual(len(benchmark_systems(include_literature_proxies=True)), 6)
-        self.assertEqual(len(benchmark_systems(include_controls=True, include_literature_proxies=True)), 7)
+        self.assertEqual(len(benchmark_systems(include_controls=True)), 8)
+        self.assertEqual(len(benchmark_systems(include_literature_proxies=True)), 7)
+        self.assertEqual(len(benchmark_systems(include_controls=True, include_literature_proxies=True)), 8)
 
     def test_aggregate_reports_binary_diagnostic_metrics(self) -> None:
         scores = [

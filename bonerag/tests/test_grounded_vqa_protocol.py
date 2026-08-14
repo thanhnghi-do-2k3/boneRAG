@@ -22,6 +22,8 @@ class TestGroundedVQAProtocol(unittest.TestCase):
         self.assertEqual(datasets["btxrd"]["status"], "loader_pending")
         self.assertTrue(datasets["radbench"]["native_vqa"])
         self.assertEqual(datasets["radbench"]["status"], "external_eval_pending")
+        baselines = {item["key"]: item for item in manifest["baselines"]}
+        self.assertTrue(baselines["linear_probe"]["implemented"])
 
     def test_warnings_block_overclaiming(self) -> None:
         manifest = build_grounded_vqa_manifest()

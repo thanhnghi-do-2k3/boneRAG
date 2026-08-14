@@ -370,7 +370,7 @@ export function EvaluationScreen() {
       <ScreenHeader
         eyebrow="Đánh giá reproducible"
         title="Benchmark Bone-grounded VQA"
-        description="FracAtlas-derived closed VQA pilot: câu hỏi sinh từ annotation, test hold-out bị loại khỏi corpus, rồi chạy NN, zero-shot prompt, kNN, centroid và BoneRAG trên cùng bộ ảnh."
+        description="FracAtlas-derived closed VQA pilot: câu hỏi sinh từ annotation, test hold-out bị loại khỏi corpus, rồi chạy NN, zero-shot prompt, kNN, centroid, linear probe và BoneRAG trên cùng bộ ảnh."
       />
 
       <div className="panel benchmark-history-panel">
