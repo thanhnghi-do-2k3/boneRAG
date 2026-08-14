@@ -270,9 +270,11 @@ def _gemini_benchmark_analysis(summary: dict, cases: list | None = None) -> tupl
         "Bạn là reviewer nghiên cứu Medical Image RAG. Hãy nhận xét benchmark này bằng tiếng Việt, "
         "ngắn gọn nhưng sắc bén. Đây là internal ablation, không phải so sánh trực tiếp với paper khác. "
         "Không được claim vượt MMed-RAG/RULE/FactMM-RAG nếu chưa reproduction chính thức. "
-        "Benchmark này là binary FracAtlas retrieval/classification proxy, không phải VQA explanation benchmark có ground truth. "
+        "Benchmark này là FracAtlas-derived closed grounded VQA pilot: câu hỏi sinh từ annotation, "
+        "không phải native clinician-authored VQA và chưa score query-image localization. "
         "Nêu: hệ tốt nhất theo final decision, hệ tốt nhất theo retrieval, hệ tốt nhất theo answer, BoneRAG có đủ mạnh chưa, "
-        "factuality/grounding metric có đáng tin đến đâu, lỗi metric/thiên lệch cần kiểm tra, và 3 bước cải thiện tiếp theo.\n\n"
+        "factuality/grounding metric có đáng tin đến đâu, lỗi metric/thiên lệch cần kiểm tra, "
+        "và 3 bước cải thiện tiếp theo gồm BTXRD/GRAZ/RadBench hoặc ImageCLEF nếu phù hợp.\n\n"
         f"SUMMARY JSON:\n{json.dumps(summary, ensure_ascii=False)[:12000]}\n\n"
         f"CASE AUDIT SAMPLE:\n{json.dumps(compact_cases, ensure_ascii=False)[:12000]}"
     )

@@ -31,13 +31,18 @@ class TestMilestone5ComparativeEval(unittest.TestCase):
 
     def test_protocol_declares_holdout_and_systems(self) -> None:
         protocol = protocol_metadata(build_cases(SAMPLE_RECORDS, cases_per_label=2))
-        self.assertEqual(protocol["benchmark_version"], "bonerag-fracatlas-image-v4")
-        self.assertEqual(protocol["task"], "binary fracture image-retrieval/classification proxy")
+        self.assertEqual(protocol["benchmark_version"], "bonerag-grounded-vqa-v5")
+        self.assertEqual(protocol["task"], "FracAtlas-derived closed fracture grounded VQA pilot")
+        self.assertEqual(protocol["vqa_task_scope"], "label-derived closed-ended VQA from FracAtlas annotations")
+        self.assertFalse(protocol["native_vqa_dataset"])
         self.assertTrue(protocol["test_holdout"])
         self.assertTrue(protocol["test_ids_excluded_from_retrieval"])
         self.assertFalse(protocol["external_text_corpus"])
         self.assertFalse(protocol["official_paper_reproductions"])
         self.assertFalse(protocol["vqa_explanation_ground_truth"])
+        self.assertFalse(protocol["query_localization_output_scored"])
+        self.assertIn("grounded_vqa_manifest", protocol)
+        self.assertIn("BTXRD/BTRXD", [item["label"] for item in protocol["grounded_vqa_manifest"]["datasets"]])
         self.assertEqual(len(SYSTEMS), 6)
         self.assertEqual(
             [system["key"] for system in SYSTEMS],

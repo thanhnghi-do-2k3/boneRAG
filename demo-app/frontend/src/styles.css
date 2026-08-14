@@ -662,10 +662,83 @@ textarea::placeholder {
 
 .benchmark-chart,
 .benchmark-analysis,
+.benchmark-scope-panel,
 .paper-eval-panel {
   margin-bottom: 1.5rem;
   padding: 1rem;
   border-radius: 16px;
+}
+
+.benchmark-scope-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+  gap: 12px;
+  margin-top: 1rem;
+}
+
+.benchmark-scope-grid > div {
+  padding: 12px;
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  background: rgba(255, 255, 255, 0.025);
+}
+
+.benchmark-scope-grid strong,
+.benchmark-dataset-chip strong {
+  display: block;
+  color: var(--ink);
+  font-size: 0.82rem;
+}
+
+.benchmark-scope-grid p {
+  margin: 8px 0 4px;
+  color: var(--ink);
+  font-weight: 700;
+}
+
+.benchmark-scope-grid small,
+.benchmark-dataset-chip small {
+  color: var(--muted);
+  font-size: 0.76rem;
+  line-height: 1.45;
+}
+
+.benchmark-dataset-roadmap {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+  gap: 10px;
+  margin-top: 1rem;
+}
+
+.benchmark-dataset-chip {
+  padding: 10px;
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  background: rgba(255, 255, 255, 0.025);
+}
+
+.benchmark-dataset-chip span {
+  display: block;
+  margin: 6px 0 2px;
+  color: var(--accent);
+  font-size: 0.74rem;
+  font-weight: 800;
+  text-transform: uppercase;
+}
+
+.benchmark-task-list {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-top: 1rem;
+}
+
+.benchmark-task-list span {
+  padding: 7px 9px;
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  color: var(--muted);
+  font-size: 0.72rem;
 }
 
 .benchmark-chart-grid {

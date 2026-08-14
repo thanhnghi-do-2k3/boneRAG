@@ -25,9 +25,13 @@ from bonerag.main_algo.factuality import FactualityAuditor
 from bonerag.main_algo.encoder import normalize
 from bonerag.main_algo.pipeline import BoneRAGPipeline, PipelineResult
 from bonerag.main_algo.vector_index import SearchHit, dot
+from bonerag.evaluation.grounded_vqa_protocol import (
+    build_grounded_vqa_manifest,
+    scope_warnings,
+)
 
 
-BENCHMARK_VERSION = "bonerag-fracatlas-image-v4"
+BENCHMARK_VERSION = "bonerag-grounded-vqa-v5"
 FACTUALITY_AUDITOR = FactualityAuditor()
 
 
@@ -51,6 +55,11 @@ class BenchmarkCase:
     expected_diagnosis: str
     expected_body_part: str
     source: str = "FracAtlas"
+    question_type: str = "decision_presence"
+    answer_type: str = "closed_binary"
+    expected_answer: str | None = None
+    gold_source: str = "classification label"
+    grounding_available: bool = False
 
 
 PRIMARY_SYSTEMS: tuple[dict[str, Any], ...] = (
@@ -178,6 +187,8 @@ def build_cases(records: list[ImageRecord], cases_per_label: int = 16) -> list[B
                     question="Does this X-ray show a bone fracture?",
                     expected_diagnosis=label,
                     expected_body_part=record.body_part,
+                    expected_answer="yes" if label == "fracture" else "no",
+                    grounding_available=bool(label == "fracture" and record.fracture_boxes),
                 )
             )
     return cases
@@ -604,7 +615,20 @@ def score_case(case: BenchmarkCase, result: PipelineResult, latency_ms: float) -
     return {
         "case_id": case.case_id,
         "query_image_id": case.query_image_id,
+        "dataset": case.source,
+        "question_type": case.question_type,
+        "answer_type": case.answer_type,
+        "gold_source": case.gold_source,
+        "expected_answer": case.expected_answer,
         "expected_diagnosis": expected,
+        "expected_body_part": case.expected_body_part,
+        "grounding_available": case.grounding_available,
+        "grounding_scored": False,
+        "grounding_status": (
+            "reference_available_not_scored_no_query_region_output"
+            if case.grounding_available
+            else "no_query_grounding_reference_for_this_case"
+        ),
         "predicted_top_diagnosis": top.diagnosis if top else None,
         "evidence_majority_diagnosis": evidence_majority,
         "evidence_label_consensus": round(evidence_consensus, 4),
@@ -689,6 +713,8 @@ def aggregate_case_scores(case_scores: list[dict[str, Any]]) -> dict[str, Any]:
     )
     summary["answer_supported_claims"] = sum(int(item.get("answer_supported_claims", 0)) for item in case_scores)
     summary["answer_unsupported_claims"] = sum(int(item.get("answer_unsupported_claims", 0)) for item in case_scores)
+    summary["grounding_evaluable_cases"] = sum(1 for item in case_scores if item.get("grounding_available"))
+    summary["grounding_scored"] = False
     summary.update(_classification_metrics(case_scores, "predicted_top_diagnosis", "retrieval"))
     summary.update(_classification_metrics(case_scores, "answer_predicted_diagnosis", "answer"))
     summary.update(_classification_metrics(case_scores, "decision_predicted_diagnosis", "decision"))
@@ -747,10 +773,14 @@ def _classification_metrics(
 
 
 def protocol_metadata(cases: list[BenchmarkCase], systems: tuple[dict[str, Any], ...] = SYSTEMS) -> dict[str, Any]:
+    grounded_vqa = build_grounded_vqa_manifest(active_dataset_key="fracatlas")
     return {
         "benchmark_version": BENCHMARK_VERSION,
         "dataset": "FracAtlas",
-        "task": "binary fracture image-retrieval/classification proxy",
+        "task": "FracAtlas-derived closed fracture grounded VQA pilot",
+        "paper_safe_task_name": grounded_vqa["paper_safe_task_name"],
+        "vqa_task_scope": "label-derived closed-ended VQA from FracAtlas annotations",
+        "native_vqa_dataset": False,
         "dataset_fingerprint": dataset_fingerprint(cases),
         "n_cases": len(cases),
         "cases_per_label": len(cases) // 2,
@@ -759,6 +789,10 @@ def protocol_metadata(cases: list[BenchmarkCase], systems: tuple[dict[str, Any],
         "external_text_corpus": False,
         "official_paper_reproductions": False,
         "vqa_explanation_ground_truth": False,
+        "query_localization_output_scored": False,
+        "grounding_reference_cases": sum(1 for case in cases if case.grounding_available),
+        "grounded_vqa_manifest": grounded_vqa,
+        "scope_warnings": scope_warnings(grounded_vqa),
         "systems": [
             {key: value for key, value in system.items() if key != "description"}
             for system in systems

@@ -2,25 +2,27 @@
 
 ## Kết luận ngắn
 
-Bộ benchmark FracAtlas hiện tại chỉ đủ để trả lời câu hỏi **BoneRAG có tốt hơn
-Image-only retrieval trên binary fracture proxy của chính mình hay không**. Nó
-chưa đủ để tuyên bố BoneRAG hơn MMed-RAG, RULE hoặc FactMM-RAG, và cũng chưa
-phải benchmark VQA/explanation đầy đủ vì câu hỏi yes/no đang được tự sinh từ
-folder label.
+Bộ benchmark hiện tại là **FracAtlas-derived closed grounded VQA pilot**. Nó đủ
+để trả lời câu hỏi BoneRAG có tốt hơn các baseline đã chạy thật trên cùng
+FracAtlas hold-out hay không. Nó chưa đủ để tuyên bố BoneRAG hơn MMed-RAG, RULE
+hoặc FactMM-RAG, và cũng chưa phải native clinician-authored VQA vì câu hỏi
+yes/no đang được sinh từ annotation/folder label.
 
 ## Ma trận bài toán liên quan
 
 | Nhóm | Dataset / benchmark | Bài toán | Metric chính | Đặt cạnh BoneRAG thế nào |
 |---|---|---|---|---|
 | MSK fracture | [FracAtlas](https://pmc.ncbi.nlm.nih.gov/articles/PMC10404222/) / [Figshare](https://figshare.com/articles/dataset/The_dataset/22363012) | Classification, localization, segmentation gãy xương | Accuracy/F1 cho label; mAP/IoU cho box/mask | Cùng domain nhất. Hiện BoneRAG mới dùng binary label; bước hợp lệ tiếp theo là thêm localization/mask grounding. |
+| Bone tumor | [BTXRD/BTRXD](https://www.nature.com/articles/s41597-024-04311-y) | Classification, localization, segmentation u xương | Macro-F1 cho normal/benign/malignant; mAP/IoU/Dice cho box/mask | Rất khớp đề tài bệnh lý xương. Cần loader riêng, không trộn trực tiếp vào fracture benchmark. |
 | MSK abnormality | [MURA](https://stanfordmlgroup.github.io/competitions/mura/) | Normal/abnormal trên upper-extremity X-ray studies | Cohen's kappa; hidden test leaderboard | Không so số trực tiếp với FracAtlas. Dùng làm external transfer nếu implement loader và study-level evaluation. |
 | Pediatric wrist trauma | [GRAZPEDWRI-DX](https://pmc.ncbi.nlm.nih.gov/articles/PMC9122976/) | Wrist fracture/object detection với tags, boxes, polygons | Detection F1/mAP, tag accuracy | Rất phù hợp để kiểm tra BoneRAG có học được localization/evidence không, nhưng cần dataset loader riêng. |
 | Hand radiograph regression | [RSNA Pediatric Bone Age](https://www.rsna.org/artificial-intelligence/ai-image-challenge/rsna-pediatric-bone-age-challenge-2017) | Dự đoán tuổi xương từ hand X-ray | Mean absolute distance/error theo tháng | Liên quan xương nhưng không phải fracture/RAG; chỉ dùng cho discussion hoặc transfer encoder. |
+| Plain-film radiology VQA | [RadBench](https://harrison-ai.github.io/radbench/datasets/radbench/) | Clinician-curated QA trên plain X-ray, có closed/open và multi-turn | Closed accuracy, open answer score, case-level accuracy | External native-VQA sanity check gần nhất với "hỏi đáp trực quan"; không chuyên xương nhưng có plain-film/fracture-style cases. |
 | Radiology MedVQA | [VQA-RAD](https://www.nature.com/articles/sdata2018251) | Clinician-generated QA trên ảnh radiology | Accuracy cho closed/open answer; BLEU/semantic variants tùy paper | Benchmark hợp lệ nếu muốn nói VQA thật, vì có câu hỏi và reference answer. |
 | Radiology MedVQA + KG | [SLAKE](https://www.med-vqa.com/slake/) | English/Chinese medical VQA, có semantic labels, masks, KG | Open/closed accuracy, reasoning/category breakdown | Phù hợp để test RAG/knowledge retrieval; cần loader và split chính thức. |
 | Pathology VQA | [PathVQA](https://aclanthology.org/2021.acl-short.90/) | Open/closed QA trên pathology images | Accuracy/BLEU theo open/closed | Liên quan explanation/reasoning, nhưng khác modality; dùng để kiểm tra general Medical VQA. |
 | Large-scale MedVQA | [PMC-VQA](https://pmc.ncbi.nlm.nih.gov/articles/PMC11663219/) | Large-scale generated medical VQA từ PMC figures | MCQ accuracy, open-ended ACC/BLEU | Có ích để pretrain/evaluate VQA quy mô lớn; không thay thế FracAtlas fracture benchmark. |
-| Challenge VQA | [ImageCLEF VQA-Med 2019](https://www.imageclef.org/2019/medical/vqa/) | Radiology QA theo modality/plane/organ/abnormality | Challenge accuracy/BLEU/WBSS tùy year | Dùng cho benchmark VQA chuẩn nếu muốn có câu hỏi y khoa đa dạng. |
+| Challenge VQA | [ImageCLEF VQA-Med 2019](https://www.imageclef.org/2019/medical/vqa/) | Radiology QA theo modality/plane/organ/abnormality, có ca musculoskeletal/fracture/tumor | Challenge accuracy/BLEU/WBSS tùy year | Lọc musculoskeletal subset để có external native-VQA gần với xương. |
 | Explanation/rationale | [MedThink / R-RAD, R-SLAKE, R-Path](https://aclanthology.org/2025.findings-naacl.415/) | VQA kèm rationale trung gian | Answer accuracy + rationale/explanation metric | Hướng đúng nếu muốn đánh giá giải thích, không chỉ đúng/sai label. |
 
 ## Phương pháp liên quan nên thảo luận
@@ -63,13 +65,16 @@ folder label.
    rationale/report hoặc yêu cầu model xuất localization rồi chấm với mask/box
    FracAtlas. Metric `answer_factuality_score` hiện tại chỉ là heuristic bám
    evidence, không phải clinical explanation score.
-4. **Dataset transfer:** thêm VQA-RAD, SLAKE, PathVQA hoặc OmniMedVQA với
-   split công khai, câu hỏi và câu trả lời gốc. Không trộn câu hỏi của test
-   vào index.
-5. **Method transfer:** chỉ sau khi có bước 1-4 mới thêm adaptive-k, factual
+4. **Bone dataset expansion:** thêm BTXRD/BTRXD cho u xương và GRAZPEDWRI-DX
+   cho wrist trauma. Đây vẫn là annotation-derived QA, nên chấm decision,
+   grounding và evidence bằng label/box/mask.
+5. **External native VQA:** thêm RadBench hoặc ImageCLEF VQA-Med
+   musculoskeletal subset với câu hỏi và câu trả lời gốc. Không trộn câu hỏi
+   của test vào index.
+6. **Method transfer:** chỉ sau khi có bước 1-5 mới thêm adaptive-k, factual
    reranker, hard-negative mining hoặc preference tuning. Mỗi thay đổi chạy
    lại cùng fingerprint và có ablation riêng.
-6. **Cross-dataset validation:** nếu FracAtlas có cải thiện, chạy lại trên
+7. **Cross-dataset validation:** nếu FracAtlas có cải thiện, chạy lại trên
    MURA hoặc GRAZPEDWRI-DX. Nếu không transfer được thì chỉ claim trong phạm vi
    FracAtlas.
 
@@ -77,8 +82,9 @@ folder label.
 
 Claim có thể bảo vệ được với protocol hiện tại:
 
-> Trên `bonerag-fracatlas-image-v3`, với cùng encoder, FAISS image index,
-> generator và 64 ảnh test hold-out, BoneRAG đạt ... so với Image-only RAG.
+> Trên `bonerag-grounded-vqa-v5`, với cùng encoder, FAISS image index,
+> generator và 64 ảnh FracAtlas-derived VQA test hold-out, BoneRAG đạt ... so
+> với các baseline đã chạy thật.
 
 Claim chưa được phép viết:
 

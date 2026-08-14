@@ -60,8 +60,12 @@ class TestPaperReport(unittest.TestCase):
             "run_id": "benchmark-test",
             "created_at": "2026-08-13T00:00:00Z",
             "protocol": {
-                "benchmark_version": "bonerag-fracatlas-image-v3",
+                "benchmark_version": "bonerag-grounded-vqa-v5",
                 "dataset": "FracAtlas",
+                "task": "FracAtlas-derived closed fracture grounded VQA pilot",
+                "vqa_task_scope": "label-derived closed-ended VQA from FracAtlas annotations",
+                "native_vqa_dataset": False,
+                "query_localization_output_scored": False,
                 "dataset_fingerprint": "unit-test",
                 "n_cases": 4,
                 "test_holdout": True,
@@ -81,6 +85,7 @@ class TestPaperReport(unittest.TestCase):
     def test_builds_ci_and_paired_claim_guidance(self) -> None:
         paper = build_paper_evaluation(self._sample_run())
         self.assertEqual(paper["schema_version"], "paper-eval-v1")
+        self.assertFalse(paper["benchmark_scope"]["native_vqa_dataset"])
         self.assertEqual(len(paper["systems"]), 2)
         self.assertIn("discrimination_audit", paper)
         top1_metric = paper["systems"][1]["metrics"]["retrieval_top1_label_accuracy"]
@@ -119,6 +124,7 @@ class TestPaperReport(unittest.TestCase):
         markdown = build_markdown_report(run)
         bundle = build_artifact_bundle(run)
         self.assertIn("BoneRAG Benchmark Paper Evaluation", markdown)
+        self.assertIn("Task scope", markdown)
         self.assertIn("markdown_report", bundle)
         self.assertIn("systems_csv", bundle)
         self.assertIn("summary_svg", bundle)

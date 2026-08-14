@@ -27,9 +27,19 @@ Mỗi dòng trong `experiments.jsonl` là một JSON độc lập để dễ app
 
 ## Paper-ready artifact sau benchmark
 
-Sau mỗi run FracAtlas benchmark, backend/CLI sinh thêm `paper_evaluation` trong
-run JSON. Artifact này không tạo baseline giả; nó chỉ phân tích các system đã
-chạy thật trên cùng case IDs.
+Sau mỗi run benchmark, backend/CLI sinh thêm `paper_evaluation` trong run JSON.
+Artifact này không tạo baseline giả; nó chỉ phân tích các system đã chạy thật
+trên cùng case IDs.
+
+Benchmark hiện tại là **FracAtlas-derived closed grounded VQA pilot**:
+
+- FracAtlas không phải native VQA dataset; câu hỏi yes/no được sinh từ annotation.
+- BTXRD/BTRXD và GRAZPEDWRI-DX được track trong `grounded_vqa_manifest` nhưng
+  chưa chạy cho đến khi có loader riêng.
+- RadBench/ImageCLEF VQA-Med musculoskeletal subset là external native-VQA
+  benchmark dự kiến, không được tính là kết quả hiện tại.
+- Grounding bằng IoU/Dice/mAP chỉ được claim sau khi hệ thống output box/mask
+  trên query image.
 
 Matrix mặc định hiện so BoneRAG với nhiều thuật toán cùng bài toán:
 
@@ -42,6 +52,7 @@ Matrix mặc định hiện so BoneRAG với nhiều thuật toán cùng bài to
 
 Nội dung chính:
 
+- benchmark scope: active dataset, native-VQA status, dataset roadmap, blocked claims
 - confidence interval 95% cho metric hệ thống
 - paired BoneRAG-vs-every-executed-baseline delta theo từng ảnh
 - exact McNemar/binomial test cho metric nhị phân

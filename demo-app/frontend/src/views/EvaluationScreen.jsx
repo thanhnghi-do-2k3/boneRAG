@@ -55,6 +55,60 @@ function BenchmarkChart({ systems }) {
   );
 }
 
+function BenchmarkScopePanel({ protocol }) {
+  if (!protocol) return null;
+  const manifest = protocol.grounded_vqa_manifest || {};
+  const datasets = Array.isArray(manifest.datasets) ? manifest.datasets : [];
+  const tasks = Array.isArray(manifest.task_taxonomy) ? manifest.task_taxonomy : [];
+  const warnings = Array.isArray(protocol.scope_warnings) ? protocol.scope_warnings : [];
+  return (
+    <div className="benchmark-scope-panel panel">
+      <div className="benchmark-panel-heading">
+        <div><span className="eyebrow">Benchmark scope</span><h3>Bone-grounded VQA protocol</h3></div>
+        <span>{manifest.schema_version || protocol.benchmark_version || 'scope'}</span>
+      </div>
+      <div className="benchmark-scope-grid">
+        <div>
+          <strong>Current run</strong>
+          <p>{protocol.task || '—'}</p>
+          <small>{protocol.vqa_task_scope || '—'}</small>
+        </div>
+        <div>
+          <strong>Native VQA</strong>
+          <p>{protocol.native_vqa_dataset ? 'Yes' : 'No, label-derived QA'}</p>
+          <small>External QA: RadBench/ImageCLEF subset cần loader riêng.</small>
+        </div>
+        <div>
+          <strong>Grounding</strong>
+          <p>{protocol.query_localization_output_scored ? 'Scored' : 'Reference only, not scored'}</p>
+          <small>{protocol.grounding_reference_cases || 0} FracAtlas cases có reference region trong run.</small>
+        </div>
+      </div>
+      {warnings.length > 0 && (
+        <div className="paper-audit-warnings">
+          {warnings.map((item) => <p key={item}>{item}</p>)}
+        </div>
+      )}
+      <div className="benchmark-dataset-roadmap">
+        {datasets.map((dataset) => (
+          <div className="benchmark-dataset-chip" key={dataset.key}>
+            <strong>{dataset.label}</strong>
+            <span>{dataset.status}</span>
+            <small>{dataset.native_vqa ? 'native VQA' : 'annotation-derived QA'}</small>
+          </div>
+        ))}
+      </div>
+      {tasks.length > 0 && (
+        <div className="benchmark-task-list">
+          {tasks.slice(0, 5).map((task) => (
+            <span key={task.key}>{task.label}: {task.status}</span>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
 function PaperEvaluationPanel({ paperEvaluation }) {
   if (!paperEvaluation) return null;
   const claims = paperEvaluation.claim_guidance || {};
@@ -315,8 +369,8 @@ export function EvaluationScreen() {
     <section className="screen">
       <ScreenHeader
         eyebrow="Đánh giá reproducible"
-        title="Benchmark Image RAG thật"
-        description="Binary FracAtlas retrieval/classification proxy: test hold-out bị loại khỏi corpus, rồi chạy NN, zero-shot prompt, kNN, centroid và BoneRAG trên cùng bộ ảnh."
+        title="Benchmark Bone-grounded VQA"
+        description="FracAtlas-derived closed VQA pilot: câu hỏi sinh từ annotation, test hold-out bị loại khỏi corpus, rồi chạy NN, zero-shot prompt, kNN, centroid và BoneRAG trên cùng bộ ảnh."
       />
 
       <div className="panel benchmark-history-panel">
@@ -426,6 +480,7 @@ export function EvaluationScreen() {
               <button className="secondary-button" onClick={downloadRun}>Tải JSON kết quả</button>
             </div>
           </div>
+          <BenchmarkScopePanel protocol={completedSummary} />
           <BenchmarkChart systems={systems} />
           <PaperEvaluationPanel paperEvaluation={paperEvaluation} />
           {analysis && (

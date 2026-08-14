@@ -1,4 +1,4 @@
-"""CLI for the reproducible FracAtlas Image-RAG benchmark.
+"""CLI for the reproducible FracAtlas-derived grounded VQA benchmark.
 
 This module intentionally does not read ``ground_truth.json``.  The query
 label comes from the real FracAtlas folder containing the selected image, and
@@ -247,7 +247,7 @@ def print_markdown_report(results: list[dict[str, Any]]) -> None:
 
 
 def main() -> None:
-    parser = argparse.ArgumentParser(description="BoneRAG real FracAtlas benchmark")
+    parser = argparse.ArgumentParser(description="BoneRAG FracAtlas-derived grounded VQA benchmark")
     parser.add_argument("--generator", choices=[*GENERATOR_MODES, "all"], default="synth")
     parser.add_argument("--encoder", choices=["biomedclip", "clip_vit_b32", "clip_vit_l14"], default="biomedclip")
     parser.add_argument("--cases", type=int, default=32, help="Total balanced cases; default: 32")

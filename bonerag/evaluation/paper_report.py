@@ -586,6 +586,8 @@ def _allowed_and_blocked_claims(
     n_cases = int(_as_float(protocol.get("n_cases", 0)))
     official_repro = bool(protocol.get("official_paper_reproductions"))
     has_vqa_gt = bool(protocol.get("vqa_explanation_ground_truth"))
+    native_vqa = bool(protocol.get("native_vqa_dataset"))
+    query_grounding_scored = bool(protocol.get("query_localization_output_scored"))
     test_holdout = bool(protocol.get("test_holdout")) and bool(protocol.get("test_ids_excluded_from_retrieval"))
     fallback_systems = [
         system.get("system_label", system.get("system_key", "unknown"))
@@ -593,12 +595,13 @@ def _allowed_and_blocked_claims(
         if _as_float(system.get("generator_fallback_rate", 0.0)) > 0
     ]
     allowed = [
-        "Report this as an internal FracAtlas binary image-retrieval/classification ablation with the recorded fingerprint.",
+        "Report this as a FracAtlas-derived closed grounded-VQA pilot with the recorded fingerprint.",
         "Compare BoneRAG only against systems actually executed on the same cases, encoder, generator, and hold-out protocol.",
     ]
     blocked = [
         "Do not claim superiority over MMed-RAG, RULE, FactMM-RAG, MR-RAG, MKGF, Path-RAG, or VisRAG without running their real method/checkpoint on a shared benchmark.",
         "Do not claim clinical explanation quality from this run; the current task has no radiologist reference rationale.",
+        "Do not call this a native clinician-authored VQA benchmark; FracAtlas questions are generated from annotations.",
     ]
     warnings: list[str] = []
 
@@ -613,8 +616,12 @@ def _allowed_and_blocked_claims(
         )
     if not official_repro:
         warnings.append("Published paper methods are discussion baselines only in this run, not direct numerical comparators.")
+    if not native_vqa:
+        warnings.append("The active dataset is label-derived, not native VQA; use RadBench/ImageCLEF/VQA-RAD-style data for external VQA claims.")
     if not has_vqa_gt:
-        warnings.append("Answer metrics are binary label proxies; use VQA-RAD/SLAKE/etc. for real VQA claims.")
+        warnings.append("Answer metrics are structured label proxies; they do not score clinician-written free-form rationales.")
+    if not query_grounding_scored:
+        warnings.append("Grounding/localization is not scored in this run because systems do not output query-image boxes or masks.")
     if isinstance(discrimination_audit, dict):
         warnings.extend(str(item) for item in discrimination_audit.get("warnings", []))
 
@@ -722,6 +729,17 @@ def build_paper_evaluation(run_record: dict[str, Any]) -> dict[str, Any]:
         "run_id": run_record.get("run_id"),
         "benchmark_version": protocol.get("benchmark_version"),
         "dataset_fingerprint": protocol.get("dataset_fingerprint"),
+        "benchmark_scope": {
+            "dataset": protocol.get("dataset"),
+            "task": protocol.get("task"),
+            "paper_safe_task_name": protocol.get("paper_safe_task_name"),
+            "vqa_task_scope": protocol.get("vqa_task_scope"),
+            "native_vqa_dataset": protocol.get("native_vqa_dataset"),
+            "query_localization_output_scored": protocol.get("query_localization_output_scored"),
+            "grounding_reference_cases": protocol.get("grounding_reference_cases"),
+            "scope_warnings": protocol.get("scope_warnings", []),
+        },
+        "grounded_vqa_manifest": protocol.get("grounded_vqa_manifest"),
         "n_cases": protocol.get("n_cases") or (len(cases) // max(1, len(systems) or 1)),
         "statistical_methods": {
             "system_metric_ci": "Wilson interval for binary metrics; nonparametric case bootstrap for continuous means and diagnostic metrics.",
@@ -769,6 +787,9 @@ def build_markdown_report(run_record: dict[str, Any]) -> str:
         f"- Run ID: `{run_record.get('run_id', '-')}`",
         f"- Created at: `{run_record.get('created_at', '-')}`",
         f"- Protocol: `{protocol.get('benchmark_version', paper.get('benchmark_version', '-'))}`",
+        f"- Task scope: `{protocol.get('vqa_task_scope', protocol.get('task', '-'))}`",
+        f"- Native VQA dataset: `{protocol.get('native_vqa_dataset', False)}`",
+        f"- Query localization scored: `{protocol.get('query_localization_output_scored', False)}`",
         f"- Dataset fingerprint: `{protocol.get('dataset_fingerprint', paper.get('dataset_fingerprint', '-'))}`",
         f"- Cases: `{protocol.get('n_cases', paper.get('n_cases', '-'))}`",
         f"- Encoder / generator: `{run_record.get('encoder', '-')}` / `{run_record.get('generator', '-')}`",
@@ -794,6 +815,28 @@ def build_markdown_report(run_record: dict[str, Any]) -> str:
             ])
             + " |"
         )
+
+    scope_warnings = protocol.get("scope_warnings", [])
+    if scope_warnings:
+        lines.extend(["", "## Benchmark Scope", ""])
+        lines.extend(f"- {text}" for text in scope_warnings)
+
+    manifest = paper.get("grounded_vqa_manifest")
+    if isinstance(manifest, dict):
+        datasets = manifest.get("datasets", [])
+        lines.extend(["", "## Dataset Roadmap", ""])
+        lines.append("| Dataset | Role | Native VQA | Status | VQA usage |")
+        lines.append("|---|---|---:|---|---|")
+        for dataset in datasets:
+            if not isinstance(dataset, dict):
+                continue
+            lines.append(
+                f"| {dataset.get('label', dataset.get('key', '-'))} | "
+                f"{dataset.get('role', '-')} | "
+                f"{bool(dataset.get('native_vqa'))} | "
+                f"{dataset.get('status', '-')} | "
+                f"{dataset.get('vqa_usage', '-')} |"
+            )
 
     lines.extend([
         "",
