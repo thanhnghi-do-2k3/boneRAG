@@ -72,6 +72,38 @@ def _discover_dataset_images_root() -> Path | None:
     return None
 
 
+@lru_cache(maxsize=1)
+def _discover_btxrd_images_root() -> Path | None:
+    """Try to find the local BTXRD/BTRXD image folder."""
+    env_paths = [
+        os.environ.get("BONERAG_BTXRD_ROOT", "").strip(),
+        os.environ.get("BTXRD_ROOT", "").strip(),
+        os.environ.get("BTRXD_ROOT", "").strip(),
+    ]
+    candidates = [Path(value).expanduser().resolve() for value in env_paths if value]
+    repo_root = Path(__file__).resolve().parents[2]
+    candidates.extend([
+        Path("/content/btxrd-data"),
+        Path("/content/btxrd_repo"),
+        Path("/content/btxrd_download"),
+        Path("/content/BTXRD"),
+        Path("/content/BTRXD"),
+        Path("/content/drive/MyDrive/BoneRAG_Data/btxrd-data"),
+        Path("/content/drive/MyDrive/BoneRAG_Data/BTXRD"),
+        Path("/content/drive/MyDrive/BoneRAG_Data/BTRXD"),
+        repo_root / "data" / "BTXRD",
+        repo_root / "data" / "BTRXD",
+        repo_root / "data" / "btxrd-data",
+    ])
+
+    image_extensions = {".jpg", ".jpeg", ".png", ".bmp", ".webp"}
+    for candidate in candidates:
+        if candidate.exists() and candidate.is_dir():
+            if any(path.is_file() and path.suffix.lower() in image_extensions for path in candidate.rglob("*")):
+                return candidate
+    return None
+
+
 @lru_cache(maxsize=8)
 def _dataset_image_lookup(root: str) -> dict[str, Path]:
     """Build one basename lookup instead of recursively scanning per record."""
@@ -95,8 +127,9 @@ def resolve_dataset_image_path(image_path: str | None) -> Path | None:
         repo_root = Path(__file__).resolve().parents[2]
         candidates.extend([Path.cwd() / raw, repo_root / raw, Path("/content") / raw])
 
-    root = _discover_dataset_images_root()
-    if root:
+    for root in (_discover_dataset_images_root(), _discover_btxrd_images_root()):
+        if not root:
+            continue
         filename = raw.name
         candidates.extend([root / filename, root / raw.parent.name / filename])
         indexed = _dataset_image_lookup(str(root)).get(filename.lower())
@@ -122,6 +155,10 @@ def infer_diagnosis_from_image_path(image_path: str | Path | None) -> str | None
         return "normal"
     if "fractured" in parts:
         return "fracture"
+    if {"non_affected", "nonaffected", "non_tumor", "not_affected"} & parts:
+        return "normal"
+    if any("malignant" in part or "benign" in part or "tumor" in part for part in parts):
+        return "bone_tumor"
     return None
 
 

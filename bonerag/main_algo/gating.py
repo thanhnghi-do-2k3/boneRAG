@@ -56,7 +56,9 @@ class EvidenceGate:
             q_words = set(re.findall(r"\w+", lower_q))
             medical_keywords = {
                 "xray", "x", "ray", "bone", "fracture", "gãy", "xương", "wrist",
-                "hand", "hip", "tibia", "radius", "lesion", "tumor", "bệnh",
+                "hand", "hip", "tibia", "radius", "lesion", "tumor", "benign",
+                "malignant", "neoplasm", "mass", "bệnh", "u", "bướu",
+                "lành", "tính", "ác",
                 "ảnh", "bị", "gì", "thế", "chẩn", "đoán", "tổn", "thương", "vùng",
                 "khớp", "xem", "này", "distal", "femur", "arm", "leg", "pelvis",
                 "carpal", "metacarpal", "scaphoid", "ulna", "fibula", "foot"

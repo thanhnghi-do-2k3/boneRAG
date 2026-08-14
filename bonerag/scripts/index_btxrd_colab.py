@@ -149,6 +149,7 @@ def _kaggle_credentials_available() -> bool:
 
 def resolve_btxrd_root(drive_dir: Path) -> Path:
     print("[2/5] Locating BTXRD/BTRXD dataset...")
+    drive_available = Path("/content/drive/MyDrive").exists()
     for root in _candidate_roots(drive_dir):
         if _has_images(root):
             print(f"Found BTXRD images at: {root}")
@@ -156,21 +157,27 @@ def resolve_btxrd_root(drive_dir: Path) -> Path:
 
     zip_path = _find_zip(drive_dir)
     if zip_path:
-        extracted = _extract_zip(zip_path, Path("/content/btxrd_repo"))
+        extract_dir = drive_dir / "btxrd-data" if drive_available else Path("/content/btxrd_repo")
+        extracted = _extract_zip(zip_path, extract_dir)
         if _has_images(extracted):
             return extracted
 
     direct_url = os.environ.get("BONERAG_BTXRD_ZIP_URL", "") or os.environ.get("BTXRD_ZIP_URL", "")
     if direct_url:
-        target_zip = Path("/content/btxrd-data.zip")
+        target_zip = drive_dir / "btxrd-data.zip" if drive_available else Path("/content/btxrd-data.zip")
         run(["curl", "-L", "-o", str(target_zip), direct_url])
-        extracted = _extract_zip(target_zip, Path("/content/btxrd_repo"))
+        extract_dir = drive_dir / "btxrd-data" if drive_available else Path("/content/btxrd_repo")
+        extracted = _extract_zip(target_zip, extract_dir)
         if _has_images(extracted):
             return extracted
 
     if _kaggle_credentials_available():
         dataset = os.environ.get("BTXRD_KAGGLE_DATASET", DEFAULT_KAGGLE_DATASET)
-        target_dir = Path("/content/btxrd_download")
+        target_dir = (
+            drive_dir / "btxrd-data"
+            if Path("/content/drive/MyDrive").exists()
+            else Path("/content/btxrd_download")
+        )
         target_dir.mkdir(parents=True, exist_ok=True)
         run(["kaggle", "datasets", "download", "-d", dataset, "-p", str(target_dir), "--unzip"])
         if _has_images(target_dir):

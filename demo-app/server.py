@@ -134,12 +134,90 @@ def _normalize_generator_name(gen_name: str) -> str:
     return gen_name
 
 
+def _artifact_encoder_name(encoder_name: str) -> str:
+    if "biomed" in encoder_name:
+        return "biomedclip"
+    if "l14" in encoder_name:
+        return "clip_vitl14"
+    return "clip_vitb32"
+
+
+def _index_store_candidates(repo_root: Path, dataset_key: str) -> list[Path]:
+    runtime_dir = os.environ.get("BONERAG_RUNTIME_DATA_DIR", "").strip()
+    env_index_dir = os.environ.get("BONERAG_INDEX_STORE_DIR", "").strip()
+    candidates = [
+        repo_root / "bonerag" / "artifacts" / dataset_key,
+        repo_root / "bonerag" / "artifacts" / "fracatlas",
+    ]
+    if env_index_dir:
+        candidates.insert(0, Path(env_index_dir).expanduser())
+    if runtime_dir:
+        candidates.insert(0, Path(runtime_dir).expanduser().parent / "indexes")
+    candidates.extend([
+        Path("/content/drive/MyDrive/BoneRAG_Data/indexes"),
+        Path("/content"),
+    ])
+    unique: list[Path] = []
+    seen = set()
+    for candidate in candidates:
+        key = str(candidate)
+        if key not in seen:
+            seen.add(key)
+            unique.append(candidate)
+    return unique
+
+
+def _resolve_artifact_paths(
+    repo_root: Path,
+    encoder_name: str,
+    cfg: dict,
+) -> tuple[list[Path], list[Path], list[str]]:
+    """Find FracAtlas/BTXRD artifacts for the selected encoder."""
+    idx_name = _artifact_encoder_name(encoder_name)
+    raw_datasets = cfg.get("datasets") or os.environ.get("BONERAG_ACTIVE_DATASETS", "fracatlas,btxrd")
+    dataset_keys = [
+        part.strip().lower()
+        for part in str(raw_datasets).split(",")
+        if part.strip()
+    ]
+    prefix_by_dataset = {
+        "fracatlas": "fracatlas",
+        "btxrd": "btxrd",
+        "btrxd": "btxrd",
+    }
+    index_paths: list[Path] = []
+    metadata_paths: list[Path] = []
+    labels: list[str] = []
+    for dataset_key in dataset_keys:
+        prefix = prefix_by_dataset.get(dataset_key)
+        if not prefix:
+            continue
+        for directory in _index_store_candidates(repo_root, "btxrd" if prefix == "btxrd" else "fracatlas"):
+            faiss_file = directory / f"{prefix}_{idx_name}.faiss"
+            meta_file = directory / f"{prefix}_{idx_name}_metadata.json"
+            if faiss_file.exists() and meta_file.exists():
+                index_paths.append(faiss_file)
+                metadata_paths.append(meta_file)
+                labels.append(prefix)
+                break
+    return index_paths, metadata_paths, labels
+
+
 def _get_pipeline(config: dict | None = None) -> BoneRAGPipeline:
     """Return a cached pipeline for the given config, or for ACTIVE_CONFIG."""
     cfg = config or _ACTIVE_CONFIG
     encoder_name = cfg.get("encoder", "biomedclip")
     gen_name = _normalize_generator_name(cfg.get("generator", "local_context_synth"))
-    key = f"{encoder_name}|{gen_name}|{cfg.get('top_k', 4)}|{cfg.get('min_similarity', 0.02)}|strict={bool(cfg.get('strict_encoder', False))}"
+    repo_root = Path(__file__).resolve().parents[1]
+    index_paths, metadata_paths, artifact_labels = _resolve_artifact_paths(repo_root, encoder_name, cfg)
+    artifact_key = ",".join(
+        f"{label}:{path.name}:{int(path.stat().st_mtime)}"
+        for label, path in zip(artifact_labels, index_paths)
+    ) or "fallback"
+    key = (
+        f"{encoder_name}|{gen_name}|{cfg.get('top_k', 4)}|{cfg.get('min_similarity', 0.02)}|"
+        f"strict={bool(cfg.get('strict_encoder', False))}|artifacts={artifact_key}"
+    )
     with _PIPELINE_LOCK:
         if key not in _PIPELINE_CACHE:
             _MODEL_LOADING_STATUS[key] = "loading"
@@ -154,24 +232,16 @@ def _get_pipeline(config: dict | None = None) -> BoneRAGPipeline:
                     strict=bool(cfg.get("strict_generator", False)),
                 )
 
-                # Locate pre-computed FAISS index & metadata for full FracAtlas dataset (4,082 X-rays)
-                repo_root = Path(__file__).resolve().parents[1]
-                idx_name = "biomedclip" if "biomed" in encoder_name else ("clip_vitl14" if "l14" in encoder_name else "clip_vitb32")
-                artifact_dir = repo_root / "bonerag" / "artifacts" / "fracatlas"
-                faiss_file = artifact_dir / f"fracatlas_{idx_name}.faiss"
-                meta_file = artifact_dir / f"fracatlas_{idx_name}_metadata.json"
-
-                index_path = faiss_file if faiss_file.exists() else None
-                metadata_path = meta_file if meta_file.exists() else None
-
                 _PIPELINE_CACHE[key] = BoneRAGPipeline(
                     encoder=encoder,
                     generator=generator,
                     top_k=int(cfg.get("top_k", 4)),
                     min_similarity=float(cfg.get("min_similarity", 0.02)),
-                    index_path=index_path,
-                    metadata_path=metadata_path,
+                    index_path=index_paths or None,
+                    metadata_path=metadata_paths or None,
                 )
+                if artifact_labels:
+                    print(f"[demo-app] Loaded artifact datasets: {', '.join(artifact_labels)}")
                 _MODEL_LOADING_STATUS[key] = "ready"
             except Exception as exc:
                 _MODEL_LOADING_STATUS[key] = f"error:{exc}"
@@ -618,6 +688,7 @@ class BoneRAGHandler(BaseHTTPRequestHandler):
             "min_similarity": 0.02,
             "strict_encoder": True,
             "strict_generator": True,
+            "datasets": "fracatlas",
         }
         try:
             pipe = _get_pipeline(config)

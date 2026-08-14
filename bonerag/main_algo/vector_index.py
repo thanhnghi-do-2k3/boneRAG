@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
+from pathlib import Path
 from typing import Any
 
 from .encoder import Vector
@@ -84,6 +85,39 @@ class FAISSVectorIndex:
         self.index = self.faiss.read_index(str(index_file))
         self.dim = self.index.d
         self.id_to_record = id_to_record
+
+    def load_from_files(
+        self,
+        index_files: list[str | Path],
+        id_groups: list[list[str]],
+    ) -> None:
+        """Load and concatenate multiple same-dimension FAISS flat indexes."""
+        if len(index_files) != len(id_groups):
+            raise ValueError("index_files and id_groups must have the same length")
+        if not index_files:
+            return
+
+        loaded_indexes = [self.faiss.read_index(str(index_file)) for index_file in index_files]
+        dim = loaded_indexes[0].d
+        if any(index.d != dim for index in loaded_indexes):
+            raise ValueError("all FAISS indexes must share the same vector dimension")
+
+        self.index = self.faiss.IndexFlatIP(dim)
+        self.dim = dim
+        self.id_to_record = []
+
+        for index_file, loaded_index, ids in zip(index_files, loaded_indexes, id_groups):
+            if loaded_index.ntotal != len(ids):
+                raise ValueError(
+                    f"FAISS index/metadata count mismatch for {index_file}: "
+                    f"{loaded_index.ntotal} vectors vs {len(ids)} metadata rows"
+                )
+            vectors = self.np.vstack([
+                loaded_index.reconstruct(position)
+                for position in range(loaded_index.ntotal)
+            ]).astype(self.np.float32)
+            self.index.add(vectors)
+            self.id_to_record.extend(ids)
 
     def save_to_file(self, index_file: str | Path) -> None:
         """Save active FAISS index to disk."""

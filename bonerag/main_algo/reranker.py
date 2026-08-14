@@ -31,9 +31,18 @@ PATHOLOGY_KEYWORDS: set[str] = {
     "crack",
     "lesion",
     "tumor",
+    "benign",
+    "malignant",
+    "neoplasm",
+    "mass",
     "dislocation",
     "gãy",
     "nứt",
+    "u xương",
+    "u",
+    "bướu",
+    "lành tính",
+    "ác tính",
     "tổn thương",
     "trật khớp",
 }
@@ -63,11 +72,17 @@ def _pathology_target_from_question(question: str) -> str | None:
         r"^\s*(does|do|is|are|can|could|would|will|has|have)\b",
         r"\b(show|shows|detect|detects|indicate|indicates|evidence of)\b",
         r"\?$",
-        r"\b(có|không|liệu|phải|chăng)\b.*\b(gãy|fracture)\b",
+        r"\b(có|không|liệu|phải|chăng)\b.*\b(gãy|fracture|tumor|u|bướu)\b",
     )
     if has_pathology_word and any(re.search(pattern, q_lower) for pattern in screening_patterns):
         return None
 
+    if any(token in q_lower for token in ("malignant", "ác tính")):
+        return "malignant"
+    if any(token in q_lower for token in ("benign", "lành tính")):
+        return "benign"
+    if any(token in q_lower for token in ("tumor", "neoplasm", "mass", "u xương", "bướu")):
+        return "bone_tumor"
     if has_pathology_word:
         return "fracture"
     return None
@@ -128,13 +143,20 @@ class AnatomicalReranker:
 
         # 2. Pathology Finding Score
         pathology_target = _pathology_target_from_question(q_lower)
-        rec_is_fractured = record.diagnosis.lower() == "fracture" or record.fracture_type.lower() != "none"
+        diagnosis = record.diagnosis.lower()
+        fracture_type = record.fracture_type.lower()
+        rec_is_fractured = diagnosis == "fracture" or fracture_type == "fractured"
+        rec_is_tumor = diagnosis in {"bone_tumor", "bone tumor", "tumor", "bone lesion"} or "tumor" in fracture_type
 
         if pathology_target is None:
             pathology_score = 0.5
         elif pathology_target == "fracture" and rec_is_fractured:
             pathology_score = 1.0
         elif pathology_target == "normal" and not rec_is_fractured:
+            pathology_score = 1.0
+        elif pathology_target == "bone_tumor" and rec_is_tumor:
+            pathology_score = 1.0
+        elif pathology_target in {"benign", "malignant"} and rec_is_tumor and pathology_target in fracture_type:
             pathology_score = 1.0
         else:
             pathology_score = 0.2
@@ -143,6 +165,8 @@ class AnatomicalReranker:
         # Penalty if anatomy matches but pathology is opposite (e.g., normal case when user asks for severe fracture)
         penalty = 0.0
         if pathology_target == "fracture" and not rec_is_fractured and anatomy_match > 0.5:
+            penalty = self.hard_negative_penalty
+        if pathology_target in {"bone_tumor", "benign", "malignant"} and not rec_is_tumor and anatomy_match > 0.5:
             penalty = self.hard_negative_penalty
 
         final_score = (

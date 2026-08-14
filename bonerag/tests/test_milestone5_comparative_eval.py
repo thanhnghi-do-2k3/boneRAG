@@ -150,6 +150,48 @@ class TestMilestone5ComparativeEval(unittest.TestCase):
         self.assertEqual(pipeline.records[0].body_part, "unlabeled anatomy")
         self.assertEqual(pipeline.records[0].region, "unlabeled anatomy")
 
+    def test_metadata_loader_preserves_btxrd_tumor_records(self) -> None:
+        class FakeEncoder:
+            dim = 2
+
+            def encode_text(self, text: str):
+                return (1.0, 0.0)
+
+        with TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            tumor_dir = root / "Benign Tumor"
+            tumor_dir.mkdir()
+            image_path = tumor_dir / "IMG000001.jpg"
+            image_path.write_bytes(b"fake")
+            metadata_path = root / "btxrd_biomedclip_metadata.json"
+            metadata_path.write_text(
+                json.dumps([
+                    {
+                        "dataset": "BTXRD",
+                        "image_id": "btxrd-bone-tumor-benign-img000001",
+                        "image_path": str(image_path),
+                        "diagnosis": "bone_tumor",
+                        "fracture_type": "none",
+                        "tumor_type": "benign",
+                        "title": "BTXRD bone tumor X-ray IMG000001.jpg",
+                        "body_part": "tibia",
+                        "region": "lower limb",
+                        "text": "btxrd bone xray radiograph bone_tumor benign tibia",
+                        "tumor_boxes": [[1.0, 2.0, 30.0, 40.0]],
+                    }
+                ]),
+                encoding="utf-8",
+            )
+
+            pipeline = BoneRAGPipeline(encoder=FakeEncoder(), metadata_path=metadata_path)
+
+        record = pipeline.records[0]
+        self.assertEqual(record.image_id, "btxrd-bone-tumor-benign-img000001")
+        self.assertEqual(record.diagnosis, "bone_tumor")
+        self.assertEqual(record.fracture_type, "benign")
+        self.assertEqual(record.fracture_boxes, [[1.0, 2.0, 30.0, 40.0]])
+        self.assertTrue(record.image_path.endswith("IMG000001.jpg"))
+
     def test_answer_parser_prefers_bonerag_calibrated_footer(self) -> None:
         answer = (
             "Phần thân câu có thể nhắc no fracture và fracture lẫn nhau.\n\n"

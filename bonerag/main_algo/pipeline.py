@@ -76,59 +76,93 @@ class BoneRAGPipeline:
         generator: BaseGenerator | None = None,
         top_k: int = 4,
         min_similarity: float = 0.02,
-        index_path: Path | str | None = None,
-        metadata_path: Path | str | None = None,
+        index_path: Path | str | list[Path | str] | None = None,
+        metadata_path: Path | str | list[Path | str] | None = None,
     ) -> None:
-        self.index_path = Path(index_path) if index_path else None
-        self.metadata_path = Path(metadata_path) if metadata_path else None
+        self.index_paths = [Path(path) for path in index_path] if isinstance(index_path, list) else ([Path(index_path)] if index_path else [])
+        self.metadata_paths = [Path(path) for path in metadata_path] if isinstance(metadata_path, list) else ([Path(metadata_path)] if metadata_path else [])
+        self.index_path = self.index_paths[0] if len(self.index_paths) == 1 else None
+        self.metadata_path = self.metadata_paths[0] if len(self.metadata_paths) == 1 else None
         self.encoder = encoder or get_multimodal_encoder(mode="biomedclip")
         self.generator = generator or TemplateGenerator()
         self.top_k = top_k
         self.min_similarity = min_similarity
+        self._index_record_id_groups: list[list[str]] = []
 
         # Load custom dataset metadata if provided
-        if self.metadata_path and self.metadata_path.exists():
+        metadata_files = [path for path in self.metadata_paths if path.exists()]
+        if metadata_files:
             import json
-            with self.metadata_path.open("r", encoding="utf-8") as fh:
-                meta_list = json.load(fh)
             loaded_records = []
-            for item in meta_list:
-                raw_image_path = item.get("image_path")
-                resolved_image_path = resolve_dataset_image_path(raw_image_path)
-                actual_diagnosis = infer_diagnosis_from_image_path(resolved_image_path or raw_image_path)
-                diagnosis = actual_diagnosis or item.get("diagnosis", "unknown")
-                raw_image_id = str(item.get("image_id", "")).strip()
-                image_stem = Path(raw_image_path or raw_image_id).stem.lower()
-                image_id = (
-                    f"fracatlas-{diagnosis if diagnosis in {'fracture', 'normal'} else 'unknown'}-{image_stem}"
-                    if image_stem
-                    else raw_image_id
-                )
-                body_part = item.get("body_part", "unknown")
-                region = item.get("region", "unknown")
-                text = item.get("text", "")
-                if body_part == "forearm/wrist" and region == "forearm and wrist":
-                    combined_meta = f"{item.get('title', '')} {raw_image_path or ''}".lower()
-                    if "forearm" not in combined_meta and "wrist" not in combined_meta:
-                        body_part = "unlabeled anatomy"
-                        region = "unlabeled anatomy"
-                        text = " ".join(
-                            token for token in str(text).split()
-                            if token.lower() not in {"wrist", "forearm"}
-                        )
-                loaded_records.append(
-                    ImageRecord(
-                        image_id=image_id,
-                        title=item.get("title", ""),
-                        body_part=body_part,
-                        diagnosis=diagnosis,
-                        fracture_type="fractured" if diagnosis == "fracture" else "none" if diagnosis == "normal" else item.get("fracture_type", "unknown"),
-                        region=region,
-                        evidence_note=item.get("evidence_note", ""),
-                        text=text,
-                        image_path=str(resolved_image_path) if resolved_image_path else raw_image_path,
+            for metadata_file in metadata_files:
+                with metadata_file.open("r", encoding="utf-8") as fh:
+                    meta_list = json.load(fh)
+                group_ids: list[str] = []
+                for item in meta_list:
+                    raw_image_path = item.get("image_path")
+                    resolved_image_path = resolve_dataset_image_path(raw_image_path)
+                    actual_diagnosis = infer_diagnosis_from_image_path(resolved_image_path or raw_image_path)
+                    dataset_name = str(item.get("dataset", "")).strip().lower()
+                    raw_image_id = str(item.get("image_id", "")).strip()
+                    image_stem = Path(raw_image_path or raw_image_id).stem.lower()
+                    is_fracatlas_record = (
+                        dataset_name == "fracatlas"
+                        or raw_image_id.startswith("fracatlas-")
+                        or str(metadata_file.name).startswith("fracatlas_")
                     )
-                )
+                    diagnosis = (
+                        actual_diagnosis
+                        if is_fracatlas_record and actual_diagnosis in {"fracture", "normal"}
+                        else item.get("diagnosis", actual_diagnosis or "unknown")
+                    )
+                    if is_fracatlas_record and image_stem:
+                        image_id = f"fracatlas-{diagnosis if diagnosis in {'fracture', 'normal'} else 'unknown'}-{image_stem}"
+                    else:
+                        image_id = raw_image_id or f"{dataset_name or 'dataset'}-{image_stem}"
+                    body_part = item.get("body_part", "unknown")
+                    region = item.get("region", "unknown")
+                    text = item.get("text", "")
+                    if body_part == "forearm/wrist" and region == "forearm and wrist":
+                        combined_meta = f"{item.get('title', '')} {raw_image_path or ''}".lower()
+                        if "forearm" not in combined_meta and "wrist" not in combined_meta:
+                            body_part = "unlabeled anatomy"
+                            region = "unlabeled anatomy"
+                            text = " ".join(
+                                token for token in str(text).split()
+                                if token.lower() not in {"wrist", "forearm"}
+                            )
+                    lesion_boxes = item.get("fracture_boxes") or item.get("tumor_boxes")
+                    if not isinstance(lesion_boxes, list) or not lesion_boxes:
+                        lesion_boxes = None
+                    diagnosis_key = str(diagnosis).lower()
+                    tumor_type = str(item.get("tumor_type") or "").strip()
+                    raw_fracture_type = str(item.get("fracture_type") or "").strip()
+                    if diagnosis_key == "fracture":
+                        fracture_type = raw_fracture_type or "fractured"
+                    elif diagnosis_key in {"bone_tumor", "bone tumor", "tumor"}:
+                        fracture_type = tumor_type or raw_fracture_type or "unknown"
+                    elif diagnosis_key == "normal":
+                        fracture_type = "none"
+                    else:
+                        fracture_type = raw_fracture_type or "none"
+                    loaded_records.append(
+                        ImageRecord(
+                            image_id=image_id,
+                            title=item.get("title", ""),
+                            body_part=body_part,
+                            diagnosis=diagnosis,
+                            fracture_type=fracture_type,
+                            region=region,
+                            evidence_note=item.get("evidence_note", ""),
+                            text=text,
+                            image_path=str(resolved_image_path) if resolved_image_path else raw_image_path,
+                            image_width=item.get("image_width"),
+                            image_height=item.get("image_height"),
+                            fracture_boxes=lesion_boxes,
+                        )
+                    )
+                    group_ids.append(image_id)
+                self._index_record_id_groups.append(group_ids)
             self.records = loaded_records
         else:
             from bonerag.main_algo.data import get_sample_records
@@ -149,12 +183,16 @@ class BoneRAGPipeline:
         dim = getattr(self.encoder, "dim", 512)
 
         # 1. Fast load from pre-computed FAISS index file on disk (<0.02s)
-        if self.index_path and self.index_path.exists():
+        existing_index_paths = [path for path in self.index_paths if path.exists()]
+        if existing_index_paths:
             try:
                 from .vector_index import FAISSVectorIndex
                 idx = FAISSVectorIndex(dim=dim)
-                id_list = [r.image_id for r in self.records]
-                idx.load_from_file(self.index_path, id_list)
+                if len(existing_index_paths) == 1:
+                    id_list = [r.image_id for r in self.records]
+                    idx.load_from_file(existing_index_paths[0], id_list)
+                else:
+                    idx.load_from_files(existing_index_paths, self._index_record_id_groups)
                 return idx
             except Exception as exc:
                 print(f"[pipeline] Load index warning: {exc}, building in-memory...")
