@@ -90,10 +90,23 @@ npm run dev
 ```
 Mở trình duyệt truy cập: **[http://localhost:5173](http://localhost:5173)**
 
-### 5. Chạy benchmark thật từ terminal hoặc Colab
+### 5. Mã hóa dataset trên Colab và chạy benchmark
 
-Trước tiên phải mount FracAtlas, chạy notebook index để tạo file `.faiss` và
-`*_metadata.json`, sau đó chạy:
+Trước tiên phải mount dataset và chạy notebook index để tạo file `.faiss` và
+`*_metadata.json`.
+
+- FracAtlas: chạy [`colab/01_FracAtlas_5Models_Embedding.ipynb`](colab/01_FracAtlas_5Models_Embedding.ipynb).
+- BTXRD/BTRXD: chạy [`colab/03_BTXRD_Embedding.ipynb`](colab/03_BTXRD_Embedding.ipynb), hoặc từ Colab:
+
+```bash
+python3 bonerag/scripts/index_btxrd_colab.py
+```
+
+BTXRD artifacts sẽ có dạng `btxrd_biomedclip.faiss` và
+`btxrd_biomedclip_metadata.json`, được lưu vào
+`Google Drive/BoneRAG_Data/indexes/` nếu Drive được mount.
+
+Benchmark FracAtlas hiện tại chạy bằng:
 
 ```bash
 python3 -m bonerag.evaluation.run_benchmark \

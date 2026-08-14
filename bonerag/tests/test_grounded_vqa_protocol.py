@@ -19,7 +19,7 @@ class TestGroundedVQAProtocol(unittest.TestCase):
         self.assertFalse(datasets["fracatlas"]["native_vqa"])
         self.assertEqual(datasets["fracatlas"]["status"], "implemented_current_run")
         self.assertFalse(datasets["btxrd"]["native_vqa"])
-        self.assertEqual(datasets["btxrd"]["status"], "loader_pending")
+        self.assertEqual(datasets["btxrd"]["status"], "colab_indexing_added_loader_pending")
         self.assertTrue(datasets["radbench"]["native_vqa"])
         self.assertEqual(datasets["radbench"]["status"], "external_eval_pending")
         baselines = {item["key"]: item for item in manifest["baselines"]}

@@ -39,7 +39,7 @@ from their labels/boxes/masks:
 | Dataset | Role | Native VQA? | Current status | Intended VQA use |
 |---|---|---:|---|---|
 | FracAtlas | Core fracture dataset | No | Implemented | Fracture presence QA, evidence retrieval, future box/mask grounding |
-| BTXRD/BTRXD | Core tumor dataset | No | Loader pending | Tumor presence, benign/malignant QA, tumor grounding |
+| BTXRD/BTRXD | Core tumor dataset | No | Colab indexing added; loader pending | Tumor presence, benign/malignant QA, tumor grounding |
 | GRAZPEDWRI-DX | External bone/wrist dataset | No | Loader pending | Pediatric wrist fracture/pathology hard-negative grounding |
 | RadBench | External radiology QA | Yes | Loader pending | Real plain-film VQA sanity check |
 | ImageCLEF VQA-Med MSK subset | External radiology QA | Yes | Loader pending | Musculoskeletal/fracture/tumor QA subset |
@@ -161,7 +161,8 @@ FracAtlas masks/boxes with IoU.
 
 For a stronger project/paper evaluation, add:
 
-1. BTXRD/BTRXD loader and tumor QA tasks.
+1. BTXRD/BTRXD loader and tumor QA tasks. Colab indexing artifacts can already
+   be generated with `colab/03_BTXRD_Embedding.ipynb`.
 2. GRAZPEDWRI-DX loader and wrist-fracture hard-negative grounding tasks.
 3. RadBench or ImageCLEF VQA-Med musculoskeletal subset as external native-VQA
    validation.

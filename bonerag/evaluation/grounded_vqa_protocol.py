@@ -31,7 +31,7 @@ DATASET_REGISTRY: tuple[dict[str, Any], ...] = (
         "key": "btxrd",
         "label": "BTXRD/BTRXD",
         "role": "planned_core_bone_dataset",
-        "status": "loader_pending",
+        "status": "colab_indexing_added_loader_pending",
         "native_vqa": False,
         "domain": "primary bone tumor radiographs",
         "source_annotations": [
